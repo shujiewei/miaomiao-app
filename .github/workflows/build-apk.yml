@@ -1,0 +1,84 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:        # 允许在 Actions 页面手动触发
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: ⬇️ Checkout
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: ☕ Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 🤖 Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-34 build-tools;34.0.0'
+
+      - name: 📦 Install npm dependencies
+        run: npm install
+
+      - name: 🛠 Build www/ assets (download CDN deps)
+        run: npm run build:www
+
+      - name: 📱 Add Android platform (Capacitor)
+        run: npx cap add android
+
+      - name: 🎨 Generate Android icons from resources/icon.png
+        run: npx @capacitor/assets generate --android || echo "Asset gen failed, using default icon"
+
+      - name: 🔄 Sync Capacitor (copy www -> android assets)
+        run: npx cap sync android
+
+      - name: 🈶 Set Chinese app name in strings.xml
+        run: |
+          STRINGS=android/app/src/main/res/values/strings.xml
+          if [ -f "$STRINGS" ]; then
+            sed -i 's|<string name="app_name">[^<]*</string>|<string name="app_name">喵喵小百科</string>|' "$STRINGS"
+            sed -i 's|<string name="title_activity_main">[^<]*</string>|<string name="title_activity_main">喵喵小百科</string>|' "$STRINGS"
+            echo "--- patched strings.xml ---"
+            cat "$STRINGS"
+          fi
+
+      - name: 🔨 Build Debug APK
+        working-directory: android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: 📝 Rename APK
+        run: |
+          mkdir -p out
+          cp android/app/build/outputs/apk/debug/app-debug.apk out/miaomiao-v0.2-debug.apk
+          ls -lh out/
+
+      - name: ⬆️ Upload APK as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: miaomiao-debug-apk
+          path: out/miaomiao-v0.2-debug.apk
+          retention-days: 30
+
+      - name: 🎉 Summary
+        run: |
+          echo "## ✅ APK 构建成功！" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "下载方式：" >> $GITHUB_STEP_SUMMARY
+          echo "1. 在本次 Action 运行页面下拉到 **Artifacts** 区" >> $GITHUB_STEP_SUMMARY
+          echo "2. 点击 \`miaomiao-debug-apk\` 下载 zip" >> $GITHUB_STEP_SUMMARY
+          echo "3. 解压得到 \`miaomiao-v0.2-debug.apk\`，传到安卓手机安装" >> $GITHUB_STEP_SUMMARY
