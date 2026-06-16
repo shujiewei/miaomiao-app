@@ -1,0 +1,21 @@
+{
+  "name": "miaomiao-app",
+  "version": "0.2.0",
+  "description": "喵喵小百科 - 给爱猫小朋友的安卓应用",
+  "private": true,
+  "scripts": {
+    "build:www": "node scripts/build-www.js",
+    "cap:add": "npx cap add android",
+    "cap:assets": "npx @capacitor/assets generate --android",
+    "cap:sync": "npx cap sync android",
+    "build:apk": "npm run build:www && npx cap sync android && cd android && ./gradlew assembleDebug"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/core": "^6.1.2"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^6.1.2"
+  }
+}

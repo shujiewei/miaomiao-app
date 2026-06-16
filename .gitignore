@@ -1,0 +1,23 @@
+# Node
+node_modules/
+npm-debug.log*
+
+# Built / Generated
+www/
+android/
+ios/
+
+# Capacitor generated configs
+capacitor.config.ts
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# Logs
+*.log

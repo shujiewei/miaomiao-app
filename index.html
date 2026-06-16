@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#f59e42" />
+  <title>喵喵小百科 · 给爱猫的小朋友</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🐱%3C/text%3E%3C/svg%3E">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            ginger: {
+              50:  '#fff8f1',
+              100: '#ffeedb',
+              200: '#ffd9ad',
+              300: '#ffbd75',
+              400: '#ffa047',
+              500: '#f9852a',
+              600: '#e96a16',
+              700: '#bf5113',
+              800: '#974117',
+              900: '#7a3717'
+            },
+            cream: {
+              50:  '#fffdf8',
+              100: '#fdf6e8',
+              200: '#f7e9c8'
+            },
+            mint: {
+              400: '#7bd1b4',
+              500: '#4dbe9a',
+              600: '#2fa481'
+            },
+            paw: {
+              400: '#c98ed4',
+              500: '#a665b3'
+            }
+          },
+          fontFamily: {
+            sans: ['"PingFang SC"', '"Hiragino Sans GB"', '"Microsoft YaHei"', 'system-ui', 'sans-serif'],
+            display: ['"PingFang SC"', '"Hiragino Sans GB"', 'system-ui', 'sans-serif']
+          },
+          boxShadow: {
+            soft: '0 1px 2px rgba(0,0,0,.04), 0 4px 14px rgba(249,133,42,.10)',
+            pop:  '0 12px 28px -8px rgba(249,133,42,.30)'
+          },
+          borderRadius: {
+            xl2: '1.25rem',
+            xl3: '1.75rem'
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    html, body, #root { height: 100%; }
+    body {
+      font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      overscroll-behavior: none;
+      background:
+        radial-gradient(900px 600px at 90% -10%, #ffeedb 0%, transparent 60%),
+        radial-gradient(800px 500px at -10% 110%, #fdf6e8 0%, transparent 60%),
+        #fffdf8;
+    }
+    .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+    .scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(0,0,0,.12); border-radius: 4px; }
+    .no-tap-highlight { -webkit-tap-highlight-color: transparent; user-select: none; }
+
+    /* paw bounce on tap */
+    .paw-press { transition: transform .15s cubic-bezier(.4,1.6,.5,1); }
+    .paw-press:active { transform: scale(.94); }
+
+    /* small float for the home cat */
+    @keyframes floaty { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+    .floaty { animation: floaty 3.2s ease-in-out infinite; }
+
+    /* purr ripple */
+    @keyframes purr-ring {
+      0% { transform: scale(.8); opacity: .7; }
+      100% { transform: scale(2.4); opacity: 0; }
+    }
+    .purr-ring { position: absolute; inset: 0; border: 3px solid #ffbd75; border-radius: 999px; animation: purr-ring 1.2s ease-out forwards; pointer-events: none; }
+
+    /* star pop */
+    @keyframes star-pop {
+      0% { transform: scale(.4) rotate(-15deg); opacity: 0; }
+      60% { transform: scale(1.1) rotate(8deg); opacity: 1; }
+      100% { transform: scale(1) rotate(0); opacity: 1; }
+    }
+    .star-pop { animation: star-pop .5s cubic-bezier(.3,1.6,.5,1) both; }
+
+    /* shake on wrong */
+    @keyframes shake { 0%,100%{transform:translateX(0);} 25%{transform:translateX(-6px);} 75%{transform:translateX(6px);} }
+    .shake { animation: shake .35s ease both; }
+
+    /* drawing canvas */
+    .drawing-canvas { touch-action: none; cursor: crosshair; background: #fffdf8; }
+
+    /* time bubble */
+    .time-bubble { transition: transform .25s, box-shadow .25s, background .25s; }
+    .time-bubble.active { transform: translateY(-4px) scale(1.06); }
+
+    /* Loading splash */
+    #yq-splash { position: fixed; inset: 0; display: grid; place-items: center; background: linear-gradient(180deg,#fff8f1,#fffdf8); transition: opacity .3s ease-out; z-index: 50; }
+    #yq-splash[data-hide="1"] { opacity: 0; pointer-events: none; }
+    #yq-splash .logo { font-size: 72px; }
+    #yq-splash .name { font-size: 26px; color: #e96a16; font-weight: 700; margin-top: 8px; letter-spacing: 4px;}
+    #yq-splash .hint { font-size: 13px; color: #a98e7a; margin-top: 10px; }
+
+    /* hide system arrows on number inputs */
+    input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  </style>
+</head>
+<body class="text-stone-900">
+  <div id="root"></div>
+  <div id="yq-splash">
+    <div class="text-center">
+      <div class="logo">🐱</div>
+      <div class="name">喵喵小百科</div>
+      <div class="hint">正在召唤一只小猫咪…</div>
+    </div>
+  </div>
+
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
+
+  <script src="src/data.js"></script>
+  <script type="text/babel" data-presets="react" src="src/app.jsx"></script>
+</body>
+</html>
