@@ -574,17 +574,22 @@ function Quiz({ user, setUser, go }) {
           <DailyFishBar user={user} />
           <p className="text-sm text-stone-500 mb-1">答对一题最多得 <b className="text-ginger-600">3 🐟</b>。用提示或看清楚图片各 <b>-1 🐟</b>，最少也有 <b>1 🐟</b>。</p>
           <p className="text-sm text-stone-500 mb-4">攒够小鱼干就能去 <button onClick={() => { AudioFX.click(); go('shelter'); }} className="underline text-ginger-600">猫舍</button> 领养新猫咪！<span className="text-stone-400">题目顺序每次都会重新打乱～</span></p>
-          {[1, 2, 3, 4].map(L => {
+          {[1, 2, 3, 4, 5].map(L => {
             const all = DATA.quizzes.filter(q => q.level === L);
             const done = all.filter(q => user.answered[q.id]).length;
-            const emoji = ['🐱','🐯','🌍','📸'][L-1];
-            const title = ['家猫篇','猫科篇','动物百科','看图识猫'][L-1];
-            const sub = L === 4 ? '先看模糊轮廓猜，挑战一眼识猫' : null;
+            const emoji = ['🐱','🐯','🌍','📸','📚'][L-1];
+            const title = ['家猫篇','猫科篇','动物百科','看图识猫','故事大挑战'][L-1];
+            const subMap = {
+              4: '先看模糊轮廓猜，挑战一眼识猫',
+              5: '题目都来自"猫咪小故事"，读过更容易答对'
+            };
+            const sub = subMap[L];
+            const showNew = (L === 4 || L === 5);
             return (
               <Card key={L} onClick={() => { setLevel(L); setIdx(0); setPicked(null); setShowHint(false); setRevealFull(false); }} className="mb-3 flex items-center gap-3">
                 <div className="text-4xl">{emoji}</div>
                 <div className="flex-1">
-                  <div className="font-bold text-stone-700">{title}{L === 4 && <span className="ml-2 text-xs bg-ginger-500 text-white px-2 py-0.5 rounded-full align-middle">NEW</span>}</div>
+                  <div className="font-bold text-stone-700">{title}{showNew && <span className="ml-2 text-xs bg-ginger-500 text-white px-2 py-0.5 rounded-full align-middle">NEW</span>}</div>
                   {sub && <div className="text-[11px] text-stone-400">{sub}</div>}
                   <div className="text-xs text-stone-500">已完成 {done} / {all.length}</div>
                 </div>
@@ -645,6 +650,8 @@ function Quiz({ user, setUser, go }) {
         if (cap.patch.totalFishEarned >= 50 && !nextBadges.includes('fishcoins_50')) nextBadges.push('fishcoins_50');
         const photoQs = DATA.quizzes.filter(qz => qz.level === 4);
         if (photoQs.length > 0 && photoQs.every(qz => nextAnswered[qz.id]) && !nextBadges.includes('photo_quiz_all')) nextBadges.push('photo_quiz_all');
+        const storyQs = DATA.quizzes.filter(qz => qz.level === 5);
+        if (storyQs.length > 0 && storyQs.every(qz => nextAnswered[qz.id]) && !nextBadges.includes('story_quiz_all')) nextBadges.push('story_quiz_all');
         return {
           ...u,
           ...cap.patch,
@@ -740,6 +747,17 @@ function Quiz({ user, setUser, go }) {
             ) : (
               <div className="text-rose-500 font-bold">差一点点～<br/><span className="text-sm text-stone-500 font-normal">正确答案是 {String.fromCharCode(65 + q.a)}. {q.opts[q.a]}</span></div>
             )}
+            {q.storyId && (() => {
+              const story = DATA.stories.find(s => s.id === q.storyId);
+              if (!story) return null;
+              return (
+                <button onClick={() => { AudioFX.click(); go('stories', { openStoryId: q.storyId }); }}
+                  className="paw-press no-tap-highlight mt-3 inline-flex items-center gap-1.5 bg-cream-100 hover:bg-ginger-100 rounded-full px-3 py-1.5 text-xs">
+                  <span>💡 来自故事《<b className="text-ginger-700">{story.title}</b>》</span>
+                  <span className="text-ginger-600">→</span>
+                </button>
+              );
+            })()}
             <div className="mt-4">
               <BigButton onClick={next}>下一题 →</BigButton>
             </div>
@@ -1400,7 +1418,7 @@ function About({ user, setUser, go }) {
           <p className="text-sm text-stone-600 leading-relaxed">
             《喵喵小百科》给爱猫的小朋友：10 种猫科动物图鉴、45 道题（含 15 道看图识猫）、15 个家猫品种可领养、"猫的一天"、画板与小诗。
           </p>
-          <p className="text-xs text-stone-400 mt-3">v0.6 · 数据保存在本地，可导出备份 · 每日 🐟 上限 20</p>
+          <p className="text-xs text-stone-400 mt-3">v0.7 · 数据保存在本地，可导出备份 · 每日 🐟 上限 20</p>
         </Card>
 
         <Card>
@@ -1580,9 +1598,13 @@ function Shelter({ user, setUser, go }) {
 // ============================================================
 // 📚 模块: 猫咪小故事（拓展版"你知道吗"）
 // ============================================================
-function Stories({ user, setUser, go }) {
-  const [openId, setOpenId] = useState(null);
+function Stories({ user, setUser, go, routeParam }) {
+  const [openId, setOpenId] = useState(routeParam?.openStoryId || null);
   const [filter, setFilter] = useState('all');
+
+  useEffect(() => {
+    if (routeParam?.openStoryId) setOpenId(routeParam.openStoryId);
+  }, [routeParam]);
 
   const cats = DATA.storyCategories;
   const allCats = [{ id: 'all', label: '全部', emoji: '✨', color: '#f59e0b' }, ...cats];
@@ -1745,6 +1767,8 @@ function App() {
     readStories: []               // 读过的小故事 id
   });
   const [route, setRoute] = useState('home');
+  const [routeParam, setRouteParam] = useState(null);
+  const go = (r, param = null) => { setRoute(r); setRouteParam(param); };
 
   const activeCat = user.myCats.find(c => c.id === user.activeCatId) || user.myCats[0];
 
@@ -1756,7 +1780,7 @@ function App() {
     }
   }, []);
 
-  const props = { user, setUser, go: setRoute, activeCat };
+  const props = { user, setUser, go, activeCat, routeParam };
 
   return (
     <div className="min-h-full">
