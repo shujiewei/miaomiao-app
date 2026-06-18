@@ -64,14 +64,14 @@ jobs:
       - name: 📝 Rename APK
         run: |
           mkdir -p out
-          cp android/app/build/outputs/apk/debug/app-debug.apk out/miaomiao-v0.3-debug.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk out/miaomiao-v0.4-debug.apk
           ls -lh out/
 
       - name: ⬆️ Upload APK as artifact
         uses: actions/upload-artifact@v4
         with:
           name: miaomiao-debug-apk
-          path: out/miaomiao-v0.3-debug.apk
+          path: out/miaomiao-v0.4-debug.apk
           retention-days: 30
 
       - name: 🎉 Summary
@@ -81,4 +81,4 @@ jobs:
           echo "下载方式：" >> $GITHUB_STEP_SUMMARY
           echo "1. 在本次 Action 运行页面下拉到 **Artifacts** 区" >> $GITHUB_STEP_SUMMARY
           echo "2. 点击 \`miaomiao-debug-apk\` 下载 zip" >> $GITHUB_STEP_SUMMARY
-          echo "3. 解压得到 \`miaomiao-v0.3-debug.apk\`，传到安卓手机安装" >> $GITHUB_STEP_SUMMARY
+          echo "3. 解压得到 \`miaomiao-v0.4-debug.apk\`，传到安卓手机安装" >> $GITHUB_STEP_SUMMARY
