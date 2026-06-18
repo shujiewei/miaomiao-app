@@ -85,6 +85,12 @@ async function main() {
   copyFile(path.join(ROOT, 'index.html'), path.join(WWW, 'index.html'));
   copyTree(path.join(ROOT, 'src'), path.join(WWW, 'src'));
 
+  const imagesSrc = path.join(ROOT, 'images');
+  if (fs.existsSync(imagesSrc)) {
+    console.log('▶ 复制 images/ (品种图片等)');
+    copyTree(imagesSrc, path.join(WWW, 'images'));
+  }
+
   console.log('▶ 下载 vendor 依赖');
   for (const [name, url] of Object.entries(VENDOR)) {
     const dest = path.join(VENDOR_DIR, name);

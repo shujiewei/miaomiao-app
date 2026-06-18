@@ -488,14 +488,18 @@ function Quiz({ user, setUser, go }) {
         <div className="p-5 pb-32 max-w-md mx-auto">
           <p className="text-sm text-stone-500 mb-1">答对一题得 <b className="text-ginger-600">3 🐟</b>，用提示得 <b>2 🐟</b>。</p>
           <p className="text-sm text-stone-500 mb-4">攒够小鱼干就能去 <button onClick={() => { AudioFX.click(); go('shelter'); }} className="underline text-ginger-600">猫舍</button> 领养新猫咪！</p>
-          {[1, 2, 3].map(L => {
+          {[1, 2, 3, 4].map(L => {
             const all = DATA.quizzes.filter(q => q.level === L);
             const done = all.filter(q => user.answered[q.id]).length;
+            const emoji = ['🐱','🐯','🌍','📸'][L-1];
+            const title = ['家猫篇','猫科篇','动物百科','看图识猫'][L-1];
+            const sub = L === 4 ? '看真实猫咪图片，猜猜是哪个品种' : null;
             return (
               <Card key={L} onClick={() => { setLevel(L); setIdx(0); setPicked(null); }} className="mb-3 flex items-center gap-3">
-                <div className="text-4xl">{['🐱','🐯','🌍'][L-1]}</div>
+                <div className="text-4xl">{emoji}</div>
                 <div className="flex-1">
-                  <div className="font-bold text-stone-700">{['家猫篇','猫科篇','动物百科'][L-1]}</div>
+                  <div className="font-bold text-stone-700">{title}{L === 4 && <span className="ml-2 text-xs bg-ginger-500 text-white px-2 py-0.5 rounded-full align-middle">NEW</span>}</div>
+                  {sub && <div className="text-[11px] text-stone-400">{sub}</div>}
                   <div className="text-xs text-stone-500">已完成 {done} / {all.length}</div>
                 </div>
                 <div className="text-ginger-500 text-lg">›</div>
@@ -548,6 +552,8 @@ function Quiz({ user, setUser, go }) {
         if (nextUnlocked.length >= 10 && !nextBadges.includes('all_unlock')) nextBadges.push('all_unlock');
         if (correctCount >= 10 && !nextBadges.includes('quiz_10')) nextBadges.push('quiz_10');
         if (totalFishEarned >= 50 && !nextBadges.includes('fishcoins_50')) nextBadges.push('fishcoins_50');
+        const photoQs = DATA.quizzes.filter(qz => qz.level === 4);
+        if (photoQs.length > 0 && photoQs.every(qz => nextAnswered[qz.id]) && !nextBadges.includes('photo_quiz_all')) nextBadges.push('photo_quiz_all');
         return {
           ...u,
           unlocked: nextUnlocked,
@@ -575,10 +581,19 @@ function Quiz({ user, setUser, go }) {
 
   return (
     <div className="min-h-full">
-      <Header title={`${['家猫篇','猫科篇','动物百科'][level-1]} · ${idx + 1}/${list.length}`} onBack={() => setLevel(null)}
+      <Header title={`${['家猫篇','猫科篇','动物百科','看图识猫'][level-1]} · ${idx + 1}/${list.length}`} onBack={() => setLevel(null)}
         right={<FishCoinBadge n={user.fishCoins} onClick={() => go('shelter')} />} />
       <div className="p-5 pb-32 max-w-md mx-auto">
         <div className={`bg-white rounded-xl3 p-5 shadow-soft ${shake ? 'shake' : ''}`}>
+          {q.img && (
+            <div className="relative -mx-5 -mt-5 mb-4 overflow-hidden rounded-t-xl3 bg-cream-100">
+              <img src={q.img} alt="猫咪图片"
+                className="w-full h-60 object-cover"
+                loading="lazy"
+                onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+              <div className="absolute bottom-1 right-2 text-[10px] text-white/80 drop-shadow">© The Cat API</div>
+            </div>
+          )}
           <div className="text-stone-700 font-bold text-lg leading-relaxed">{q.q}</div>
           <div className="mt-4 space-y-2">
             {q.opts.map((opt, i) => {
