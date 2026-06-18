@@ -217,8 +217,11 @@ function Header({ title, onBack, right }) {
 // ============================================================
 // 🏠 首页 - 显示当前活跃猫，可切换 / 领养
 // ============================================================
+function breedPhoto(breedId) {
+  return `images/breeds/${breedId}.jpg`;
+}
+
 function CatAvatar({ breed, size = 'lg', dim = false }) {
-  // 共用：圆形头像 + 装饰 emoji
   const sizes = {
     lg:  { box: 'w-44 h-44', emoji: 'text-[100px]', deco: 'text-4xl bottom-3 right-3' },
     md:  { box: 'w-20 h-20', emoji: 'text-5xl',     deco: 'text-base bottom-1 right-1' },
@@ -231,6 +234,38 @@ function CatAvatar({ breed, size = 'lg', dim = false }) {
       <span className={s.emoji} style={{ filter: `drop-shadow(0 2px 0 ${breed.color}55)` }}>{breed.emoji}</span>
       <span className={`absolute ${s.deco}`}>{breed.deco}</span>
     </div>
+  );
+}
+
+// 真实猫照片头像（圆形）
+function RealCatPhoto({ breed, size = 'md', className = '' }) {
+  const sizes = {
+    lg:  'w-44 h-44',
+    md:  'w-20 h-20',
+    sm:  'w-14 h-14',
+    xs:  'w-10 h-10'
+  };
+  return (
+    <div className={`relative ${sizes[size]} rounded-full overflow-hidden shadow-soft ${className}`}
+      style={{ border: `3px solid ${breed.color}66` }}>
+      <img src={breedPhoto(breed.id)} alt={breed.name}
+        className="w-full h-full object-cover"
+        onError={(e) => { e.target.style.display='none'; }} />
+    </div>
+  );
+}
+
+// 卡通 ↔ 真实 切换头像（点击翻面）
+function FlipAvatar({ breed, size = 'lg' }) {
+  const [real, setReal] = useState(false);
+  return (
+    <button onClick={(e) => { e.stopPropagation(); AudioFX.click(); setReal(r => !r); }}
+      className="paw-press no-tap-highlight relative inline-block">
+      {real ? <RealCatPhoto breed={breed} size={size} /> : <CatAvatar breed={breed} size={size} />}
+      <span className="absolute -bottom-1 -right-1 bg-white rounded-full px-1.5 py-0.5 text-[9px] font-bold text-stone-500 shadow-soft">
+        {real ? '🎨 卡通' : '📸 真实'}
+      </span>
+    </button>
   );
 }
 
@@ -306,6 +341,12 @@ function Home({ user, setUser, go, activeCat }) {
                 <CatAvatar breed={breed} size="lg" />
               </button>
             </div>
+            <div className="text-center -mt-2 mb-1">
+              <button onClick={() => { AudioFX.click(); go('gallery', { breedId: breed.id }); }}
+                className="paw-press no-tap-highlight text-[11px] text-ginger-600 underline">
+                📸 看看 {breed.name} 的真实照片
+              </button>
+            </div>
             <div className="text-center">
               <div className="text-2xl font-bold" style={{ color: breed.color }}>{activeCat.name}</div>
               <div className="text-xs text-stone-500 mt-0.5">{breed.name} · {breed.temper.slice(0, 2).join(' · ')}</div>
@@ -368,7 +409,10 @@ function Home({ user, setUser, go, activeCat }) {
           <ModuleCard color="ginger" emoji="📖" title="猫咪知多少" sub="猫科动物图鉴" onClick={() => go('encyclopedia')} />
           <ModuleCard color="mint"   emoji="📚" title="猫咪小故事"
             sub={`30 个奇闻 · 已读 ${(user.readStories || []).length}/${DATA.stories.length}`}
-            onClick={() => go('stories')} isNew className="col-span-2" />
+            onClick={() => go('stories')} />
+          <ModuleCard color="paw"    emoji="📸" title="真实猫图鉴"
+            sub="15 个品种 · 高清大图"
+            onClick={() => go('gallery')} isNew />
         </div>
 
         {/* 数据卡 */}
@@ -1418,7 +1462,7 @@ function About({ user, setUser, go }) {
           <p className="text-sm text-stone-600 leading-relaxed">
             《喵喵小百科》给爱猫的小朋友：10 种猫科动物图鉴、45 道题（含 15 道看图识猫）、15 个家猫品种可领养、"猫的一天"、画板与小诗。
           </p>
-          <p className="text-xs text-stone-400 mt-3">v0.7 · 数据保存在本地，可导出备份 · 每日 🐟 上限 20</p>
+          <p className="text-xs text-stone-400 mt-3">v0.8 · 数据保存在本地，可导出备份 · 每日 🐟 上限 20</p>
         </Card>
 
         <Card>
@@ -1500,7 +1544,12 @@ function Shelter({ user, setUser, go }) {
       <div className="min-h-full">
         <Header title={`领养 ${pick.name}`} onBack={() => { setStep('browse'); setPick(null); }} />
         <div className="px-5 pt-4 pb-32 max-w-md mx-auto text-center">
-          <div className="mx-auto floaty"><CatAvatar breed={pick} size="lg" /></div>
+          <div className="flex items-center justify-center gap-3">
+            <div className="floaty"><CatAvatar breed={pick} size="md" /></div>
+            <div className="text-stone-300 text-2xl">↔</div>
+            <RealCatPhoto breed={pick} size="md" />
+          </div>
+          <div className="text-[10px] text-stone-400 mt-1">卡通 ↔ 真实样子</div>
           <div className="mt-3 text-xs text-stone-500">你的新朋友是</div>
           <div className="text-xl font-bold" style={{ color: pick.color }}>{pick.name}</div>
           <div className="text-xs text-stone-500 mt-1">{pick.temper.join(' · ')}</div>
@@ -1571,17 +1620,31 @@ function Shelter({ user, setUser, go }) {
                   const affordable = user.fishCoins >= b.price;
                   return (
                     <Card key={b.id} onClick={() => startAdopt(b)}
-                      className="!p-3 text-center relative">
+                      className="!p-0 text-center relative overflow-hidden">
                       {owned > 0 && (
-                        <div className="absolute top-1 right-1 bg-mint-500 text-white text-[10px] rounded-full px-1.5 py-0.5">已养 {owned}</div>
+                        <div className="absolute top-1.5 right-1.5 z-10 bg-mint-500 text-white text-[10px] rounded-full px-1.5 py-0.5 shadow-soft">已养 {owned}</div>
                       )}
-                      <div className="mx-auto"><CatAvatar breed={b} size="md" /></div>
-                      <div className="mt-2 font-bold text-sm" style={{ color: b.color }}>{b.name}</div>
-                      <div className="text-[10px] text-stone-500 leading-tight mt-0.5 min-h-[28px]">
-                        {b.temper.join(' · ')}
+                      {/* 顶部真实照片 */}
+                      <div className="w-full h-28 overflow-hidden" style={{ background: b.color + '22' }}>
+                        <img src={breedPhoto(b.id)} alt={b.name}
+                          className="w-full h-full object-cover"
+                          onError={(e) => { e.target.style.display='none'; }} />
                       </div>
-                      <div className={`mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${affordable ? 'bg-ginger-100 text-ginger-700' : 'bg-stone-100 text-stone-400'}`}>
-                        🐟 {b.price}
+                      {/* 底部信息 */}
+                      <div className="p-2.5 pt-3 relative">
+                        {/* 卡通头像盖在照片底部 */}
+                        <div className="absolute -top-7 left-1/2 -translate-x-1/2">
+                          <div className="rounded-full bg-white p-0.5 shadow-soft">
+                            <CatAvatar breed={b} size="sm" />
+                          </div>
+                        </div>
+                        <div className="mt-4 font-bold text-sm" style={{ color: b.color }}>{b.name}</div>
+                        <div className="text-[10px] text-stone-500 leading-tight mt-0.5 min-h-[28px]">
+                          {b.temper.join(' · ')}
+                        </div>
+                        <div className={`mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${affordable ? 'bg-ginger-100 text-ginger-700' : 'bg-stone-100 text-stone-400'}`}>
+                          🐟 {b.price}
+                        </div>
                       </div>
                     </Card>
                   );
@@ -1744,6 +1807,138 @@ function Stories({ user, setUser, go, routeParam }) {
 }
 
 // ============================================================
+// 📸 模块: 真实猫图鉴 - 15 个品种的高清照片库
+// ============================================================
+function Gallery({ user, go, routeParam }) {
+  const [openId, setOpenId] = useState(routeParam?.breedId || null);
+
+  useEffect(() => {
+    if (routeParam?.breedId) setOpenId(routeParam.breedId);
+  }, [routeParam]);
+
+  const groups = [
+    { key: 'common', title: '🥚 中华田园猫', sub: '常见品种 · 5 种' },
+    { key: 'rare',   title: '💎 短毛贵族',   sub: '中级品种 · 6 种' },
+    { key: 'epic',   title: '👑 长毛 & 特别', sub: '稀有品种 · 4 种' }
+  ];
+
+  const opened = openId ? DATA.breeds.find(b => b.id === openId) : null;
+
+  // 详情查看：放大照片 + breed 信息
+  if (opened) {
+    const owned = user.myCats.filter(c => c.breedId === opened.id);
+    return (
+      <div className="min-h-full">
+        <Header title={opened.name} onBack={() => setOpenId(null)}
+          right={<FishCoinBadge n={user.fishCoins} onClick={() => go('shelter')} />} />
+        <div className="p-5 pb-32 max-w-md mx-auto">
+          <div className="w-full rounded-xl3 overflow-hidden shadow-pop"
+            style={{ aspectRatio: '1/1', background: opened.color + '22' }}>
+            <img src={breedPhoto(opened.id)} alt={opened.name}
+              className="w-full h-full object-cover" />
+          </div>
+
+          <div className="text-center mt-4">
+            <div className="inline-flex items-center gap-2 bg-white rounded-full px-3 py-1 shadow-soft">
+              <CatAvatar breed={opened} size="sm" />
+              <div className="text-left">
+                <div className="font-bold" style={{ color: opened.color }}>{opened.name}</div>
+                <div className="text-[10px] text-stone-500">{opened.temper.join(' · ')}</div>
+              </div>
+            </div>
+          </div>
+
+          <Card className="mt-4 !p-4">
+            <div className="text-xs text-stone-500 mb-1">关于这种猫</div>
+            <div className="text-sm text-stone-700 leading-relaxed">{opened.desc || `${opened.name}是一种${opened.temper.join('、')}的可爱品种。`}</div>
+          </Card>
+
+          <div className="grid grid-cols-3 gap-2 mt-3 text-center">
+            <Card className="!p-2.5">
+              <div className="text-[10px] text-stone-400">稀有度</div>
+              <div className="text-sm font-bold mt-0.5" style={{ color: opened.color }}>
+                {({common:'常见',rare:'稀有',epic:'珍贵'})[opened.rarity] || '?'}
+              </div>
+            </Card>
+            <Card className="!p-2.5">
+              <div className="text-[10px] text-stone-400">领养价</div>
+              <div className="text-sm font-bold text-ginger-600 mt-0.5">🐟 {opened.price}</div>
+            </Card>
+            <Card className="!p-2.5">
+              <div className="text-[10px] text-stone-400">家里有</div>
+              <div className="text-sm font-bold text-mint-600 mt-0.5">{owned.length} 只</div>
+            </Card>
+          </div>
+
+          {owned.length > 0 && (
+            <div className="mt-3 bg-mint-400/20 rounded-xl2 p-3 text-sm">
+              <div className="text-stone-500 text-xs mb-1">你家的 {opened.name}：</div>
+              <div className="flex flex-wrap gap-1.5">
+                {owned.map(c => (
+                  <span key={c.id} className="bg-white rounded-full px-2 py-0.5 text-mint-700 font-semibold">{c.name}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="mt-5 flex gap-2">
+            <BigButton color="cream" className="flex-1" onClick={() => setOpenId(null)}>← 返回</BigButton>
+            <BigButton className="flex-1" onClick={() => go('shelter')}>🏡 去猫舍领养</BigButton>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 列表
+  return (
+    <div className="min-h-full">
+      <Header title="真实猫图鉴" onBack={() => go('home')}
+        right={<FishCoinBadge n={user.fishCoins} onClick={() => go('shelter')} />} />
+      <div className="p-5 pb-32 max-w-md mx-auto">
+        <Card className="!p-3 mb-4 bg-cream-100/60 text-xs text-stone-600">
+          <div className="font-semibold text-stone-700 mb-0.5">📸 15 个品种的真实照片</div>
+          <div className="text-[11px] text-stone-500">点开任意一张看高清大图、品种介绍和家里养的同款猫～</div>
+        </Card>
+
+        {groups.map(g => {
+          const list = DATA.breeds.filter(b => b.rarity === g.key);
+          return (
+            <div key={g.key} className="mb-5">
+              <div className="flex items-baseline gap-2 mb-2">
+                <span className="font-bold text-stone-700">{g.title}</span>
+                <span className="text-xs text-stone-400">{g.sub}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {list.map(b => {
+                  const owned = user.myCats.filter(c => c.breedId === b.id).length;
+                  return (
+                    <button key={b.id} onClick={() => { AudioFX.click(); setOpenId(b.id); }}
+                      className="paw-press no-tap-highlight relative rounded-xl2 overflow-hidden shadow-soft bg-white">
+                      <div className="w-full" style={{ aspectRatio: '1/1', background: b.color + '22' }}>
+                        <img src={breedPhoto(b.id)} alt={b.name}
+                          className="w-full h-full object-cover"
+                          onError={(e) => { e.target.style.display='none'; }} />
+                      </div>
+                      {owned > 0 && (
+                        <div className="absolute top-1 right-1 bg-mint-500 text-white text-[9px] rounded-full px-1.5 py-0.5">×{owned}</div>
+                      )}
+                      <div className="px-1 py-1.5 text-[11px] font-semibold leading-tight" style={{ color: b.color }}>
+                        {b.name}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // 🚀 主 App
 // ============================================================
 function App() {
@@ -1793,7 +1988,8 @@ function App() {
       {route === 'mycats'       && <MyCats {...props} />}
       {route === 'about'        && <About {...props} />}
       {route === 'stories'      && <Stories {...props} />}
-      <BottomNav route={route} go={setRoute} />
+      {route === 'gallery'      && <Gallery {...props} />}
+      <BottomNav route={route} go={go} />
     </div>
   );
 }
