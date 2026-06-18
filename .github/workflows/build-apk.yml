@@ -55,6 +55,33 @@ jobs:
             cat "$STRINGS"
           fi
 
+      - name: 🔑 Setup consistent debug keystore (保证每次签名一致)
+        run: |
+          mkdir -p ~/.android
+          if [ -f keystore/debug.keystore ]; then
+            echo "✅ 使用仓库内已有的 keystore"
+            cp keystore/debug.keystore ~/.android/debug.keystore
+          else
+            echo "🆕 仓库内还没有 keystore，生成一个新的（首次构建）"
+            mkdir -p keystore
+            keytool -genkeypair -noprompt \
+              -keystore keystore/debug.keystore \
+              -storepass android -alias androiddebugkey -keypass android \
+              -keyalg RSA -keysize 2048 -validity 36500 \
+              -dname "CN=Miaomiao Debug, OU=Miaomiao, O=Family, L=Home, ST=N/A, C=CN"
+            cp keystore/debug.keystore ~/.android/debug.keystore
+            echo "::warning::keystore 已生成，请下载 miaomiao-keystore artifact 并提交到 keystore/debug.keystore，后续构建会复用此 keystore"
+          fi
+          echo "--- keystore SHA1 fingerprint ---"
+          keytool -list -v -keystore ~/.android/debug.keystore -storepass android 2>&1 | grep -E "(Owner|SHA1|Valid|Alias)" || true
+
+      - name: 📤 Upload keystore artifact (一次性下载提交到仓库)
+        uses: actions/upload-artifact@v4
+        with:
+          name: miaomiao-keystore
+          path: keystore/debug.keystore
+          retention-days: 90
+
       - name: 🔨 Build Debug APK
         working-directory: android
         run: |
@@ -64,14 +91,14 @@ jobs:
       - name: 📝 Rename APK
         run: |
           mkdir -p out
-          cp android/app/build/outputs/apk/debug/app-debug.apk out/miaomiao-v0.4-debug.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk out/miaomiao-v0.5-debug.apk
           ls -lh out/
 
       - name: ⬆️ Upload APK as artifact
         uses: actions/upload-artifact@v4
         with:
           name: miaomiao-debug-apk
-          path: out/miaomiao-v0.4-debug.apk
+          path: out/miaomiao-v0.5-debug.apk
           retention-days: 30
 
       - name: 🎉 Summary
@@ -81,4 +108,4 @@ jobs:
           echo "下载方式：" >> $GITHUB_STEP_SUMMARY
           echo "1. 在本次 Action 运行页面下拉到 **Artifacts** 区" >> $GITHUB_STEP_SUMMARY
           echo "2. 点击 \`miaomiao-debug-apk\` 下载 zip" >> $GITHUB_STEP_SUMMARY
-          echo "3. 解压得到 \`miaomiao-v0.4-debug.apk\`，传到安卓手机安装" >> $GITHUB_STEP_SUMMARY
+          echo "3. 解压得到 \`miaomiao-v0.5-debug.apk\`，传到安卓手机安装" >> $GITHUB_STEP_SUMMARY

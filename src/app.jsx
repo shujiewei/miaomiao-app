@@ -1201,13 +1201,17 @@ function MyCats({ user, setUser, go }) {
 // ============================================================
 function About({ user, setUser, go }) {
   const [name, setName] = useState(user.kidName || '');
+  const [exportText, setExportText] = useState('');
+  const [importText, setImportText] = useState('');
+  const [showImport, setShowImport] = useState(false);
+
   const save = () => {
     setUser(u => ({ ...u, kidName: name.trim() || '小喵管理员' }));
     AudioFX.chime();
     alert('已保存');
   };
   const reset = () => {
-    if (!confirm('重置所有进度和作品？这一步不可恢复！')) return;
+    if (!confirm('重置所有进度和作品？\n建议先到上面"数据备份"导出一份。\n这一步不可恢复！')) return;
     localStorage.removeItem('miao.user.v2');
     location.reload();
   };
@@ -1216,6 +1220,53 @@ function About({ user, setUser, go }) {
     setUser(u => ({ ...u, fishCoins: u.fishCoins + 30 }));
     AudioFX.chime();
   };
+
+  const doExport = () => {
+    try {
+      const json = JSON.stringify(user);
+      const b64 = btoa(unescape(encodeURIComponent(json)));
+      setExportText(`MIAO1:${b64}`);
+      AudioFX.chime();
+    } catch (e) {
+      alert('导出失败：' + e.message);
+    }
+  };
+  const copyExport = async () => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(exportText);
+        alert('已复制到剪贴板，找个安全的地方贴一下吧～');
+      } else {
+        alert('当前环境不支持自动复制，请长按下面的文字手动选中复制');
+      }
+    } catch (e) {
+      alert('复制失败，请手动选中文字复制：' + e.message);
+    }
+  };
+  const doImport = () => {
+    const raw = importText.trim();
+    if (!raw) { alert('请先粘贴备份字符串'); return; }
+    if (!raw.startsWith('MIAO1:')) { alert('这看起来不是喵喵备份字符串（应以 MIAO1: 开头）'); return; }
+    let data;
+    try {
+      const json = decodeURIComponent(escape(atob(raw.slice(6))));
+      data = JSON.parse(json);
+    } catch (e) {
+      alert('解析失败，备份字符串可能不完整：' + e.message);
+      return;
+    }
+    if (typeof data.fishCoins !== 'number' || !Array.isArray(data.myCats)) {
+      alert('备份内容不像是喵喵的数据格式');
+      return;
+    }
+    if (!confirm(`导入会覆盖当前所有数据，包括 ${user.myCats.length} 只猫、${user.fishCoins} 🐟。\n备份里有 ${data.myCats.length} 只猫、${data.fishCoins} 🐟。\n确定继续？`)) return;
+    setUser(data);
+    AudioFX.chime();
+    alert('✅ 数据已导入！');
+    setShowImport(false);
+    setImportText('');
+  };
+
   return (
     <div className="min-h-full">
       <Header title="关于 · 家长" onBack={() => go('home')} />
@@ -1229,11 +1280,47 @@ function About({ user, setUser, go }) {
         </Card>
 
         <Card>
+          <div className="font-bold text-stone-700 mb-2">📦 数据备份 / 恢复</div>
+          <p className="text-xs text-stone-500 leading-relaxed mb-3">
+            把所有进度（领养的猫、答题、画作、小诗、徽章）打包成一段字符串。
+            <b>换手机或重装前先导出</b>，新设备上粘贴导入即可。
+          </p>
+          <BigButton color="cream" onClick={doExport}>📤 导出我的数据</BigButton>
+          {exportText && (
+            <div className="mt-3">
+              <textarea readOnly value={exportText}
+                className="w-full text-[11px] font-mono p-2 rounded-xl2 bg-stone-100 outline-none break-all"
+                rows={5}
+                onClick={(e) => e.currentTarget.select()} />
+              <button onClick={copyExport}
+                className="mt-2 text-sm text-ginger-600 underline font-semibold paw-press">
+                📋 复制到剪贴板
+              </button>
+              <p className="text-[11px] text-stone-400 mt-1">截图保存 / 发到自己邮箱 / 微信传给自己 都行</p>
+            </div>
+          )}
+
+          <button onClick={() => { setShowImport(s => !s); AudioFX.click(); }}
+            className="mt-3 paw-press no-tap-highlight w-full bg-cream-100 text-stone-700 font-semibold rounded-xl2 py-3">
+            📥 {showImport ? '收起' : '导入数据'}
+          </button>
+          {showImport && (
+            <div className="mt-2">
+              <textarea value={importText} onChange={e => setImportText(e.target.value)}
+                placeholder="把之前导出的 MIAO1:... 字符串粘贴在这里"
+                className="w-full text-[11px] font-mono p-2 rounded-xl2 bg-stone-100 outline-none"
+                rows={5} />
+              <BigButton onClick={doImport}>✓ 应用导入</BigButton>
+            </div>
+          )}
+        </Card>
+
+        <Card>
           <div className="font-bold text-stone-700 mb-2">关于这个 App</div>
           <p className="text-sm text-stone-600 leading-relaxed">
-            《喵喵小百科》给爱猫的小朋友：10 种猫科动物图鉴、30 道题、15 个家猫品种可领养、"猫的一天"、画板与小诗。
+            《喵喵小百科》给爱猫的小朋友：10 种猫科动物图鉴、45 道题（含 15 道看图识猫）、15 个家猫品种可领养、"猫的一天"、画板与小诗。
           </p>
-          <p className="text-xs text-stone-400 mt-3">v0.2 · 原型版 · 数据保存在浏览器本地</p>
+          <p className="text-xs text-stone-400 mt-3">v0.5 · 数据保存在本地，可导出备份</p>
         </Card>
 
         <Card>
