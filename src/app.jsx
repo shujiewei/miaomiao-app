@@ -472,13 +472,36 @@ function DataPill({ label, val, full }) {
 // ============================================================
 // ❓ 模块 2: 喵星大竞猜
 // ============================================================
+// Shuffle helpers - 每次进入关卡时打乱题目顺序和选项顺序
+function shuffleInPlace(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function shuffleOptions(q) {
+  const correct = q.opts[q.a];
+  const opts = shuffleInPlace(q.opts);
+  return { ...q, opts, a: opts.indexOf(correct) };
+}
+
 function Quiz({ user, setUser, go }) {
   const [level, setLevel] = useState(null);
   const [idx, setIdx] = useState(0);
   const [picked, setPicked] = useState(null);
   const [showHint, setShowHint] = useState(false);
+  const [revealFull, setRevealFull] = useState(false); // 看图题 - 是否已点"看清楚"
   const [reward, setReward] = useState(null); // { species, fish }
   const [shake, setShake] = useState(false);
+
+  // 每次进入关卡都重新洗牌
+  const list = useMemo(() => {
+    if (level == null) return [];
+    const raw = DATA.quizzes.filter(q => q.level === level);
+    return shuffleInPlace(raw).map(shuffleOptions);
+  }, [level]);
 
   if (level == null) {
     return (
@@ -486,16 +509,16 @@ function Quiz({ user, setUser, go }) {
         <Header title="喵星大竞猜" onBack={() => go('home')}
           right={<FishCoinBadge n={user.fishCoins} onClick={() => go('shelter')} />} />
         <div className="p-5 pb-32 max-w-md mx-auto">
-          <p className="text-sm text-stone-500 mb-1">答对一题得 <b className="text-ginger-600">3 🐟</b>，用提示得 <b>2 🐟</b>。</p>
-          <p className="text-sm text-stone-500 mb-4">攒够小鱼干就能去 <button onClick={() => { AudioFX.click(); go('shelter'); }} className="underline text-ginger-600">猫舍</button> 领养新猫咪！</p>
+          <p className="text-sm text-stone-500 mb-1">答对一题最多得 <b className="text-ginger-600">3 🐟</b>。用提示或看清楚图片各 <b>-1 🐟</b>，最少也有 <b>1 🐟</b>。</p>
+          <p className="text-sm text-stone-500 mb-4">攒够小鱼干就能去 <button onClick={() => { AudioFX.click(); go('shelter'); }} className="underline text-ginger-600">猫舍</button> 领养新猫咪！<span className="text-stone-400">题目顺序每次都会重新打乱～</span></p>
           {[1, 2, 3, 4].map(L => {
             const all = DATA.quizzes.filter(q => q.level === L);
             const done = all.filter(q => user.answered[q.id]).length;
             const emoji = ['🐱','🐯','🌍','📸'][L-1];
             const title = ['家猫篇','猫科篇','动物百科','看图识猫'][L-1];
-            const sub = L === 4 ? '看真实猫咪图片，猜猜是哪个品种' : null;
+            const sub = L === 4 ? '先看模糊轮廓猜，挑战一眼识猫' : null;
             return (
-              <Card key={L} onClick={() => { setLevel(L); setIdx(0); setPicked(null); }} className="mb-3 flex items-center gap-3">
+              <Card key={L} onClick={() => { setLevel(L); setIdx(0); setPicked(null); setShowHint(false); setRevealFull(false); }} className="mb-3 flex items-center gap-3">
                 <div className="text-4xl">{emoji}</div>
                 <div className="flex-1">
                   <div className="font-bold text-stone-700">{title}{L === 4 && <span className="ml-2 text-xs bg-ginger-500 text-white px-2 py-0.5 rounded-full align-middle">NEW</span>}</div>
@@ -511,7 +534,6 @@ function Quiz({ user, setUser, go }) {
     );
   }
 
-  const list = DATA.quizzes.filter(q => q.level === level);
   const q = list[idx];
 
   if (!q) {
@@ -536,8 +558,10 @@ function Quiz({ user, setUser, go }) {
     setPicked(i);
     if (i === q.a) {
       AudioFX.correct();
-      const stars = showHint ? 4 : 5;
-      const fishEarned = showHint ? 2 : 3;
+      const isPhoto = !!q.img;
+      const penalty = (showHint ? 1 : 0) + ((isPhoto && revealFull) ? 1 : 0);
+      const stars = Math.max(3, 5 - penalty);
+      const fishEarned = Math.max(1, 3 - penalty);
       const willUnlock = q.unlocks && !user.unlocked.includes(q.unlocks);
       const unlockedSpecies = willUnlock ? DATA.species.find(s => s.id === q.unlocks) : null;
       setUser(u => {
@@ -575,6 +599,7 @@ function Quiz({ user, setUser, go }) {
   const next = () => {
     setPicked(null);
     setShowHint(false);
+    setRevealFull(false);
     setReward(null);
     setIdx(i => i + 1);
   };
@@ -586,12 +611,26 @@ function Quiz({ user, setUser, go }) {
       <div className="p-5 pb-32 max-w-md mx-auto">
         <div className={`bg-white rounded-xl3 p-5 shadow-soft ${shake ? 'shake' : ''}`}>
           {q.img && (
-            <div className="relative -mx-5 -mt-5 mb-4 overflow-hidden rounded-t-xl3 bg-cream-100">
+            <div className="relative -mx-5 -mt-5 mb-4 overflow-hidden rounded-t-xl3 bg-stone-200 h-60">
               <img src={q.img} alt="猫咪图片"
-                className="w-full h-60 object-cover"
+                className="w-full h-full object-cover transition-all duration-500"
+                style={{ filter: (picked != null || revealFull) ? 'none' : 'blur(10px) brightness(0.95)', transform: (picked != null || revealFull) ? 'scale(1)' : 'scale(1.08)' }}
                 loading="lazy"
                 onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-              <div className="absolute bottom-1 right-2 text-[10px] text-white/80 drop-shadow">© The Cat API</div>
+              {picked == null && !revealFull && (
+                <button onClick={() => { AudioFX.pop(); setRevealFull(true); }}
+                  className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-white/95 text-stone-700 text-xs font-semibold px-3.5 py-1.5 rounded-full shadow paw-press no-tap-highlight">
+                  👁️ 看清楚（少 1 颗 ⭐）
+                </button>
+              )}
+              {(picked != null || revealFull) && (
+                <div className="absolute bottom-1 right-2 text-[10px] text-white/80 drop-shadow">cat photo</div>
+              )}
+              {picked == null && !revealFull && (
+                <div className="absolute top-2 left-2 bg-ginger-500/90 text-white text-[11px] font-semibold px-2 py-0.5 rounded-full">
+                  先看轮廓猜猜看～
+                </div>
+              )}
             </div>
           )}
           <div className="text-stone-700 font-bold text-lg leading-relaxed">{q.q}</div>
@@ -630,7 +669,7 @@ function Quiz({ user, setUser, go }) {
             {picked === q.a ? (
               <div>
                 <div className="text-2xl text-mint-600 font-bold">答对了！</div>
-                <Stars n={showHint ? 4 : 5} />
+                <Stars n={Math.max(3, 5 - ((showHint ? 1 : 0) + ((q.img && revealFull) ? 1 : 0)))} />
               </div>
             ) : (
               <div className="text-rose-500 font-bold">差一点点～<br/><span className="text-sm text-stone-500 font-normal">正确答案是 {String.fromCharCode(65 + q.a)}. {q.opts[q.a]}</span></div>
