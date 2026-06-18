@@ -97,6 +97,21 @@
     @keyframes shake { 0%,100%{transform:translateX(0);} 25%{transform:translateX(-6px);} 75%{transform:translateX(6px);} }
     .shake { animation: shake .35s ease both; }
 
+    /* feed sparkle - small emoji burst around avatar */
+    @keyframes feed-sparkle {
+      0%   { transform: translate(-50%, -50%) scale(.4) rotate(0deg);   opacity: 0; }
+      30%  { transform: translate(-50%, -50%) scale(1.2) rotate(8deg);  opacity: 1; }
+      100% { transform: translate(var(--fx, -50%), var(--fy, -120%)) scale(.6) rotate(20deg); opacity: 0; }
+    }
+    .feed-sparkle {
+      position: absolute;
+      left: 50%; top: 50%;
+      font-size: 28px;
+      animation: feed-sparkle 1.1s ease-out forwards;
+      pointer-events: none;
+      filter: drop-shadow(0 1px 2px rgba(249,133,42,.4));
+    }
+
     /* drawing canvas */
     .drawing-canvas { touch-action: none; cursor: crosshair; background: #fffdf8; }
 

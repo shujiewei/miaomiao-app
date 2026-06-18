@@ -555,7 +555,10 @@
     { id: 'story_5',       name: '听故事的小耳朵', emoji: '🎧', cond: '读完 5 个小故事' },
     { id: 'story_15',      name: '故事猎人',       emoji: '🔍', cond: '读完 15 个小故事' },
     { id: 'story_all',     name: '猫咪学者',       emoji: '🎓', cond: '读完全部 30 个小故事' },
-    { id: 'story_quiz_all',name: '故事大冠军',     emoji: '🏆', cond: '答对全部 20 道故事题' }
+    { id: 'story_quiz_all',name: '故事大冠军',     emoji: '🏆', cond: '答对全部 20 道故事题' },
+    { id: 'feed_first',    name: '第一次喂猫',     emoji: '🍱', cond: '第一次给猫咪喂小鱼干' },
+    { id: 'feed_10',       name: '投喂能手',       emoji: '🐟', cond: '累计喂猫 10 次' },
+    { id: 'intimacy_full', name: '最佳伙伴',       emoji: '💞', cond: '任意一只猫亲密度达到 100' }
   ];
 
   // -------------------- 起名建议（小朋友可参考） --------------------

@@ -306,7 +306,14 @@ function DailyFishBar({ user }) {
 
 function Home({ user, setUser, go, activeCat }) {
   const [ripples, setRipples] = useState([]);
+  const [sparkles, setSparkles] = useState([]);
+  const [showRealPhoto, setShowRealPhoto] = useState(false);
   const breed = activeCat ? DATA.breeds.find(b => b.id === activeCat.breedId) : null;
+
+  const flipAvatar = () => {
+    AudioFX.click();
+    setShowRealPhoto(v => !v);
+  };
 
   const pet = () => {
     if (!activeCat) return;
@@ -316,12 +323,41 @@ function Home({ user, setUser, go, activeCat }) {
       const myCats = u.myCats.map(c => c.id === activeCat.id ? { ...c, intimacy: Math.min(100, c.intimacy + 4) } : c);
       const badges = [...u.badges];
       if (totalCuddles >= 5 && !badges.includes('cuddle_5')) badges.push('cuddle_5');
+      if (myCats.some(c => c.intimacy >= 100) && !badges.includes('intimacy_full')) badges.push('intimacy_full');
       return { ...u, myCats, totalCuddles, badges };
     });
     const id = Date.now() + Math.random();
     setRipples(r => [...r, id]);
     setTimeout(() => setRipples(r => r.filter(x => x !== id)), 1200);
   };
+
+  const feed = () => {
+    if (!activeCat) return;
+    if (user.fishCoins < 1) { AudioFX.wrong(); return; }
+    if (activeCat.intimacy >= 100) { AudioFX.pop(); return; }
+    AudioFX.chime();
+    AudioFX.meow();
+    setUser(u => {
+      const totalFeeds = (u.totalFeeds || 0) + 1;
+      const myCats = u.myCats.map(c => c.id === activeCat.id ? { ...c, intimacy: Math.min(100, c.intimacy + 10) } : c);
+      const badges = [...u.badges];
+      if (!badges.includes('feed_first')) badges.push('feed_first');
+      if (totalFeeds >= 10 && !badges.includes('feed_10')) badges.push('feed_10');
+      if (myCats.some(c => c.intimacy >= 100) && !badges.includes('intimacy_full')) badges.push('intimacy_full');
+      return { ...u, fishCoins: u.fishCoins - 1, totalFeeds, myCats, badges };
+    });
+    const burst = Array.from({ length: 6 }).map(() => ({
+      id: Date.now() + Math.random(),
+      emoji: ['✨','🐟','💞','⭐','🎉','✨'][Math.floor(Math.random() * 6)],
+      fx: (Math.random() * 220 - 110).toFixed(0) + '%',
+      fy: (-90 - Math.random() * 80).toFixed(0) + '%'
+    }));
+    setSparkles(s => [...s, ...burst]);
+    setTimeout(() => setSparkles(s => s.filter(x => !burst.find(b => b.id === x.id))), 1200);
+  };
+
+  const canFeed = activeCat && user.fishCoins >= 1 && activeCat.intimacy < 100;
+  const fullIntimacy = activeCat && activeCat.intimacy >= 100;
 
   return (
     <div className="min-h-full">
@@ -336,9 +372,18 @@ function Home({ user, setUser, go, activeCat }) {
           <>
             <div className="relative mx-auto w-56 h-56 flex items-center justify-center mb-2 select-none">
               {ripples.map(id => <span key={id} className="purr-ring"></span>)}
-              <button onClick={pet}
-                className="paw-press no-tap-highlight floaty rounded-full shadow-pop">
-                <CatAvatar breed={breed} size="lg" />
+              {sparkles.map(s => (
+                <span key={s.id} className="feed-sparkle"
+                  style={{ '--fx': s.fx, '--fy': s.fy }}>{s.emoji}</span>
+              ))}
+              <button onClick={flipAvatar}
+                className="paw-press no-tap-highlight floaty rounded-full shadow-pop relative">
+                {showRealPhoto
+                  ? <RealCatPhoto breed={breed} size="lg" />
+                  : <CatAvatar breed={breed} size="lg" />}
+                <span className="absolute -bottom-1 right-1 bg-white/95 rounded-full px-2 py-0.5 text-[10px] font-bold text-stone-500 shadow-soft">
+                  {showRealPhoto ? '📸 真实' : '🎨 卡通'}
+                </span>
               </button>
             </div>
             <div className="text-center -mt-2 mb-1">
@@ -352,6 +397,23 @@ function Home({ user, setUser, go, activeCat }) {
               <div className="text-xs text-stone-500 mt-0.5">{breed.name} · {breed.temper.slice(0, 2).join(' · ')}</div>
             </div>
 
+            {/* 互动按钮：摸摸 / 喂猫 */}
+            <div className="max-w-sm mx-auto mt-4 flex justify-center gap-4">
+              <button onClick={pet}
+                className="paw-press no-tap-highlight flex flex-col items-center justify-center w-20 h-20 rounded-full bg-ginger-100 text-ginger-700 shadow-soft active:bg-ginger-200">
+                <span className="text-2xl">🫱</span>
+                <span className="text-xs font-bold mt-0.5">摸摸</span>
+              </button>
+              <button onClick={feed} disabled={!canFeed}
+                className={`paw-press no-tap-highlight flex flex-col items-center justify-center w-20 h-20 rounded-full shadow-soft transition-all ${canFeed ? 'bg-mint-400/30 text-mint-600 active:bg-mint-400/50' : 'bg-stone-100 text-stone-400'}`}>
+                <span className="text-2xl">🐟</span>
+                <span className="text-[11px] font-bold mt-0.5 leading-tight">
+                  {fullIntimacy ? '已经很饱了！' : (user.fishCoins < 1 ? '🐟 不够' : '喂猫 -1🐟')}
+                </span>
+              </button>
+            </div>
+            <div className="text-center text-[11px] text-stone-400 mt-2">用 🐟 喂猫咪，亲密度涨得更快～</div>
+
             {/* 亲密度 */}
             <div className="max-w-sm mx-auto mt-3 mb-5">
               <div className="flex items-center text-xs text-stone-500 mb-1">
@@ -360,7 +422,7 @@ function Home({ user, setUser, go, activeCat }) {
               <div className="h-3 bg-cream-100 rounded-full overflow-hidden">
                 <div className="h-full transition-all" style={{ width: activeCat.intimacy + '%', background: breed.color }} />
               </div>
-              <div className="text-center text-[11px] text-stone-400 mt-1">摸摸 {activeCat.name} 上升亲密度</div>
+              <div className="text-center text-[11px] text-stone-400 mt-1">点头像可在卡通 ↔ 真实照片之间切换</div>
             </div>
           </>
         ) : (
@@ -1462,7 +1524,7 @@ function About({ user, setUser, go }) {
           <p className="text-sm text-stone-600 leading-relaxed">
             《喵喵小百科》给爱猫的小朋友：10 种猫科动物图鉴、45 道题（含 15 道看图识猫）、15 个家猫品种可领养、"猫的一天"、画板与小诗。
           </p>
-          <p className="text-xs text-stone-400 mt-3">v0.9 · 数据保存在本地，可导出备份 · 每日 🐟 上限 20</p>
+          <p className="text-xs text-stone-400 mt-3">v0.10 · 数据保存在本地，可导出备份 · 每日 🐟 上限 20</p>
         </Card>
 
         <Card>
@@ -1953,6 +2015,7 @@ function App() {
     ],
     activeCatId: 'c0',            // 首页正在陪伴的猫
     totalCuddles: 0,              // 累计陪伴次数（徽章用）
+    totalFeeds: 0,                // 累计喂猫次数（徽章用）
     correctCount: 0,
     answered: {},
     unlocked: ['house_cat'],      // 猫科动物图鉴解锁
