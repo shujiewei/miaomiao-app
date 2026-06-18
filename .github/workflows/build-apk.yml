@@ -55,25 +55,63 @@ jobs:
             cat "$STRINGS"
           fi
 
-      - name: 🔑 Setup consistent debug keystore (保证每次签名一致)
+      - name: 🔑 Inject explicit debug signing config + bump versionCode
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+          VERSION_NAME: '0.9'
         run: |
-          mkdir -p ~/.android
-          if [ -f keystore/debug.keystore ]; then
-            echo "✅ 使用仓库内已有的 keystore"
-            cp keystore/debug.keystore ~/.android/debug.keystore
-          else
+          set -e
+          # 1) Ensure repo keystore exists; if not, generate fresh one
+          if [ ! -f keystore/debug.keystore ]; then
             echo "🆕 仓库内还没有 keystore，生成一个新的（首次构建）"
             mkdir -p keystore
             keytool -genkeypair -noprompt \
               -keystore keystore/debug.keystore \
               -storepass android -alias androiddebugkey -keypass android \
               -keyalg RSA -keysize 2048 -validity 36500 \
-              -dname "CN=Miaomiao Debug, OU=Miaomiao, O=Family, L=Home, ST=N/A, C=CN"
-            cp keystore/debug.keystore ~/.android/debug.keystore
-            echo "::warning::keystore 已生成，请下载 miaomiao-keystore artifact 并提交到 keystore/debug.keystore，后续构建会复用此 keystore"
+              -dname "CN=Miaomiao Debug, O=Miaomiao, C=CN"
+            echo "::warning::keystore 已生成，请下载 miaomiao-keystore artifact 并提交到 keystore/debug.keystore"
+          else
+            echo "✅ 使用仓库内已有的 keystore"
           fi
-          echo "--- keystore SHA1 fingerprint ---"
-          keytool -list -v -keystore ~/.android/debug.keystore -storepass android 2>&1 | grep -E "(Owner|SHA1|Valid|Alias)" || true
+
+          # 2) Copy keystore INTO android project so build.gradle can reference it relatively
+          cp keystore/debug.keystore android/app/debug.keystore
+
+          # 3) Inject explicit signingConfigs.debug into android/app/build.gradle
+          #    (Capacitor 7 / AGP 8+ ignores ~/.android/debug.keystore by default,
+          #     so we MUST declare signingConfigs explicitly here.)
+          BUILD_GRADLE=android/app/build.gradle
+          if ! grep -q "signingConfigs" "$BUILD_GRADLE"; then
+            cat > /tmp/signing-block.gradle <<'EOF'
+    signingConfigs {
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
+EOF
+            # Insert after the first "android {" line
+            sed -i '/^android {/r /tmp/signing-block.gradle' "$BUILD_GRADLE"
+            echo "✅ Injected explicit signingConfigs.debug into build.gradle"
+          else
+            echo "ℹ️  signingConfigs already present"
+          fi
+
+          # 4) Bump versionCode (use GitHub run_number for monotonic unique numbers)
+          #    and versionName (semantic). Without this, Android refuses "same version" reinstall.
+          sed -i "s/versionCode [0-9]\+/versionCode ${BUILD_NUMBER}/" "$BUILD_GRADLE"
+          sed -i "s/versionName \"[^\"]*\"/versionName \"${VERSION_NAME}\"/" "$BUILD_GRADLE"
+
+          echo ""
+          echo "--- patched android/app/build.gradle ---"
+          cat "$BUILD_GRADLE"
+
+          echo ""
+          echo "--- keystore identity ---"
+          keytool -list -v -keystore keystore/debug.keystore -storepass android 2>&1 | grep -E "(Owner|SHA1|SHA256|Alias|Valid)" || true
 
       - name: 📤 Upload keystore artifact (一次性下载提交到仓库)
         uses: actions/upload-artifact@v4
@@ -91,14 +129,14 @@ jobs:
       - name: 📝 Rename APK
         run: |
           mkdir -p out
-          cp android/app/build/outputs/apk/debug/app-debug.apk out/miaomiao-v0.8-debug.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk out/miaomiao-v0.9-debug.apk
           ls -lh out/
 
       - name: ⬆️ Upload APK as artifact
         uses: actions/upload-artifact@v4
         with:
           name: miaomiao-debug-apk
-          path: out/miaomiao-v0.8-debug.apk
+          path: out/miaomiao-v0.9-debug.apk
           retention-days: 30
 
       - name: 🎉 Summary
@@ -108,4 +146,4 @@ jobs:
           echo "下载方式：" >> $GITHUB_STEP_SUMMARY
           echo "1. 在本次 Action 运行页面下拉到 **Artifacts** 区" >> $GITHUB_STEP_SUMMARY
           echo "2. 点击 \`miaomiao-debug-apk\` 下载 zip" >> $GITHUB_STEP_SUMMARY
-          echo "3. 解压得到 \`miaomiao-v0.8-debug.apk\`，传到安卓手机安装" >> $GITHUB_STEP_SUMMARY
+          echo "3. 解压得到 \`miaomiao-v0.9-debug.apk\`，传到安卓手机安装" >> $GITHUB_STEP_SUMMARY
