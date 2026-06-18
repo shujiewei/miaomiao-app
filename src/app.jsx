@@ -129,6 +129,37 @@ function useLocalStorage(key, initial) {
 }
 
 // ============================================================
+// 🐟 每日小鱼干上限 - 防止刷题囤鱼
+// ============================================================
+const DAILY_FISH_CAP = 20;
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function fishTodayOf(u) {
+  return u.lastFishDate === todayStr() ? (u.fishToday || 0) : 0;
+}
+function remainingFishToday(u) {
+  return Math.max(0, DAILY_FISH_CAP - fishTodayOf(u));
+}
+// 把请求的鱼干数限制在今日剩余上限内，返回 { grant, capped, patch }
+function applyFishCap(u, requested) {
+  const today = todayStr();
+  const fishToday = u.lastFishDate === today ? (u.fishToday || 0) : 0;
+  const grant = Math.max(0, Math.min(requested, DAILY_FISH_CAP - fishToday));
+  return {
+    grant,
+    capped: grant < requested,
+    patch: {
+      fishCoins: u.fishCoins + grant,
+      totalFishEarned: (u.totalFishEarned || 0) + grant,
+      fishToday: fishToday + grant,
+      lastFishDate: today
+    }
+  };
+}
+
+// ============================================================
 // 共用小组件
 // ============================================================
 function Stars({ n }) {
@@ -210,6 +241,31 @@ function FishCoinBadge({ n, onClick }) {
       <span className="text-lg">🐟</span>
       <span className="font-bold text-ginger-700 text-sm">{n}</span>
     </button>
+  );
+}
+
+// 每日鱼干进度条：在答题/故事页面顶部提示
+function DailyFishBar({ user }) {
+  const got = fishTodayOf(user);
+  const cap = DAILY_FISH_CAP;
+  const pct = Math.min(100, Math.round((got / cap) * 100));
+  const full = got >= cap;
+  return (
+    <div className={`rounded-xl2 px-3 py-2 mb-3 ${full ? 'bg-cream-100' : 'bg-ginger-50'}`}>
+      <div className="flex items-center text-xs">
+        <span className={`font-semibold ${full ? 'text-stone-500' : 'text-ginger-700'}`}>
+          {full ? '🌙 今天的小鱼干满啦' : '今日小鱼干进度'}
+        </span>
+        <span className="ml-auto text-stone-500">{got} / {cap} 🐟</span>
+      </div>
+      <div className="h-1.5 bg-white/70 rounded-full overflow-hidden mt-1.5">
+        <div className="h-full transition-all"
+          style={{ width: pct + '%', background: full ? '#a8a29e' : '#f59e0b' }} />
+      </div>
+      {full && (
+        <div className="text-[11px] text-stone-500 mt-1">星星和徽章照拿，明天再来领鱼干～</div>
+      )}
+    </div>
   );
 }
 
@@ -304,12 +360,15 @@ function Home({ user, setUser, go, activeCat }) {
           </div>
         </div>
 
-        {/* 4 大模块卡 */}
+        {/* 模块卡 */}
         <div className="grid grid-cols-2 gap-3 max-w-md mx-auto">
           <ModuleCard color="ginger" emoji="🏡" title="去猫舍" sub="领养新猫咪" onClick={() => go('shelter')} />
           <ModuleCard color="mint"   emoji="❓" title="喵星大竞猜" sub="答题赚 🐟" onClick={() => go('quiz')} />
           <ModuleCard color="paw"    emoji="🕒" title="猫的一天"   sub="陪伴时光" onClick={() => go('catday')} />
           <ModuleCard color="ginger" emoji="📖" title="猫咪知多少" sub="猫科动物图鉴" onClick={() => go('encyclopedia')} />
+          <ModuleCard color="mint"   emoji="📚" title="猫咪小故事"
+            sub={`30 个奇闻 · 已读 ${(user.readStories || []).length}/${DATA.stories.length}`}
+            onClick={() => go('stories')} isNew className="col-span-2" />
         </div>
 
         {/* 数据卡 */}
@@ -355,12 +414,15 @@ function Home({ user, setUser, go, activeCat }) {
   );
 }
 
-function ModuleCard({ color, emoji, title, sub, onClick }) {
+function ModuleCard({ color, emoji, title, sub, onClick, isNew, className = '' }) {
   const bg = { ginger: 'bg-ginger-100', mint: 'bg-mint-400/20', paw: 'bg-paw-400/20' }[color] || 'bg-cream-100';
   const accent = { ginger: 'text-ginger-700', mint: 'text-mint-600', paw: 'text-paw-500' }[color];
   return (
     <button onClick={() => { AudioFX.click(); onClick(); }}
-      className={`paw-press no-tap-highlight rounded-xl2 ${bg} p-4 text-left shadow-soft`}>
+      className={`relative paw-press no-tap-highlight rounded-xl2 ${bg} p-4 text-left shadow-soft ${className}`}>
+      {isNew && (
+        <span className="absolute top-2 right-2 text-[10px] bg-ginger-500 text-white px-2 py-0.5 rounded-full">NEW</span>
+      )}
       <div className="text-4xl">{emoji}</div>
       <div className={`mt-2 font-bold ${accent}`}>{title}</div>
       <div className="text-xs text-stone-500">{sub}</div>
@@ -509,6 +571,7 @@ function Quiz({ user, setUser, go }) {
         <Header title="喵星大竞猜" onBack={() => go('home')}
           right={<FishCoinBadge n={user.fishCoins} onClick={() => go('shelter')} />} />
         <div className="p-5 pb-32 max-w-md mx-auto">
+          <DailyFishBar user={user} />
           <p className="text-sm text-stone-500 mb-1">答对一题最多得 <b className="text-ginger-600">3 🐟</b>。用提示或看清楚图片各 <b>-1 🐟</b>，最少也有 <b>1 🐟</b>。</p>
           <p className="text-sm text-stone-500 mb-4">攒够小鱼干就能去 <button onClick={() => { AudioFX.click(); go('shelter'); }} className="underline text-ginger-600">猫舍</button> 领养新猫咪！<span className="text-stone-400">题目顺序每次都会重新打乱～</span></p>
           {[1, 2, 3, 4].map(L => {
@@ -561,34 +624,37 @@ function Quiz({ user, setUser, go }) {
       const isPhoto = !!q.img;
       const penalty = (showHint ? 1 : 0) + ((isPhoto && revealFull) ? 1 : 0);
       const stars = Math.max(3, 5 - penalty);
-      const fishEarned = Math.max(1, 3 - penalty);
+      const fishRequested = Math.max(1, 3 - penalty);
       const willUnlock = q.unlocks && !user.unlocked.includes(q.unlocks);
       const unlockedSpecies = willUnlock ? DATA.species.find(s => s.id === q.unlocks) : null;
+      let grantedFish = 0;
+      let wasCapped = false;
       setUser(u => {
         const nextUnlocked = [...u.unlocked];
         if (q.unlocks && !nextUnlocked.includes(q.unlocks)) nextUnlocked.push(q.unlocks);
         const nextAnswered = { ...u.answered, [q.id]: { stars } };
         const correctCount = Object.keys(nextAnswered).length;
-        const totalFishEarned = (u.totalFishEarned || 0) + fishEarned;
+        const cap = applyFishCap(u, fishRequested);
+        grantedFish = cap.grant;
+        wasCapped = cap.capped;
         const nextBadges = [...u.badges];
         if (nextUnlocked.length >= 1 && !nextBadges.includes('first_unlock')) nextBadges.push('first_unlock');
         if (nextUnlocked.length >= 3 && !nextBadges.includes('three_unlock')) nextBadges.push('three_unlock');
         if (nextUnlocked.length >= 10 && !nextBadges.includes('all_unlock')) nextBadges.push('all_unlock');
         if (correctCount >= 10 && !nextBadges.includes('quiz_10')) nextBadges.push('quiz_10');
-        if (totalFishEarned >= 50 && !nextBadges.includes('fishcoins_50')) nextBadges.push('fishcoins_50');
+        if (cap.patch.totalFishEarned >= 50 && !nextBadges.includes('fishcoins_50')) nextBadges.push('fishcoins_50');
         const photoQs = DATA.quizzes.filter(qz => qz.level === 4);
         if (photoQs.length > 0 && photoQs.every(qz => nextAnswered[qz.id]) && !nextBadges.includes('photo_quiz_all')) nextBadges.push('photo_quiz_all');
         return {
           ...u,
+          ...cap.patch,
           unlocked: nextUnlocked,
           answered: nextAnswered,
           correctCount,
-          fishCoins: u.fishCoins + fishEarned,
-          totalFishEarned,
           badges: nextBadges
         };
       });
-      setReward({ species: unlockedSpecies, fish: fishEarned });
+      setReward({ species: unlockedSpecies, fish: grantedFish, requested: fishRequested, capped: wasCapped });
     } else {
       AudioFX.wrong();
       setShake(true);
@@ -694,16 +760,30 @@ function Quiz({ user, setUser, go }) {
 function RewardModal({ reward, fishCoins, onClose, onShelter, onEncyclopedia }) {
   useEffect(() => { AudioFX.chime(); }, []);
   const enoughForCommon = fishCoins >= 5;
+  const fullyCapped = reward.capped && reward.fish === 0;
   return (
     <div className="fixed inset-0 z-40 bg-black/40 grid place-items-center px-6" onClick={onClose}>
       <div className="bg-white rounded-xl3 p-6 max-w-xs w-full text-center yq-modal-enter" onClick={e => e.stopPropagation()}>
         {/* 小鱼干奖励 */}
-        <div className="text-sm text-stone-500">答对啦，奖励：</div>
-        <div className="star-pop my-2 inline-flex items-center gap-1 bg-ginger-100 px-4 py-2 rounded-full">
-          <span className="text-3xl">🐟</span>
-          <span className="text-2xl font-bold text-ginger-700">+{reward.fish}</span>
-        </div>
-        <div className="text-xs text-stone-400">现在你有 {fishCoins} 个小鱼干</div>
+        <div className="text-sm text-stone-500">答对啦{!fullyCapped && '，奖励：'}</div>
+        {fullyCapped ? (
+          <div className="my-3 bg-cream-100 rounded-xl2 p-3">
+            <div className="text-3xl">🌙</div>
+            <div className="text-sm text-stone-600 mt-1">今天 20 🐟 上限到啦</div>
+            <div className="text-[11px] text-stone-400 mt-0.5">星星照拿，明天再领鱼干～</div>
+          </div>
+        ) : (
+          <>
+            <div className="star-pop my-2 inline-flex items-center gap-1 bg-ginger-100 px-4 py-2 rounded-full">
+              <span className="text-3xl">🐟</span>
+              <span className="text-2xl font-bold text-ginger-700">+{reward.fish}</span>
+            </div>
+            <div className="text-xs text-stone-400">现在你有 {fishCoins} 个小鱼干</div>
+            {reward.capped && (
+              <div className="text-[11px] text-ginger-600 mt-1">已到达每日 20 🐟 上限</div>
+            )}
+          </>
+        )}
 
         {/* 同时解锁了猫科动物 */}
         {reward.species && (
@@ -1320,7 +1400,7 @@ function About({ user, setUser, go }) {
           <p className="text-sm text-stone-600 leading-relaxed">
             《喵喵小百科》给爱猫的小朋友：10 种猫科动物图鉴、45 道题（含 15 道看图识猫）、15 个家猫品种可领养、"猫的一天"、画板与小诗。
           </p>
-          <p className="text-xs text-stone-400 mt-3">v0.5 · 数据保存在本地，可导出备份</p>
+          <p className="text-xs text-stone-400 mt-3">v0.6 · 数据保存在本地，可导出备份 · 每日 🐟 上限 20</p>
         </Card>
 
         <Card>
@@ -1498,6 +1578,150 @@ function Shelter({ user, setUser, go }) {
 }
 
 // ============================================================
+// 📚 模块: 猫咪小故事（拓展版"你知道吗"）
+// ============================================================
+function Stories({ user, setUser, go }) {
+  const [openId, setOpenId] = useState(null);
+  const [filter, setFilter] = useState('all');
+
+  const cats = DATA.storyCategories;
+  const allCats = [{ id: 'all', label: '全部', emoji: '✨', color: '#f59e0b' }, ...cats];
+  const list = filter === 'all' ? DATA.stories : DATA.stories.filter(s => s.cat === filter);
+  const readSet = new Set(user.readStories || []);
+
+  const story = openId ? DATA.stories.find(s => s.id === openId) : null;
+
+  // 打开故事 1.5 秒后算"读完"，给 +1 🐟（受每日上限约束）
+  useEffect(() => {
+    if (!story) return;
+    AudioFX.pop();
+    if (readSet.has(story.id)) return;
+    const t = setTimeout(() => {
+      setUser(u => {
+        const already = (u.readStories || []).includes(story.id);
+        if (already) return u;
+        const cap = applyFishCap(u, 1);
+        const readStories = [...(u.readStories || []), story.id];
+        const nextBadges = [...u.badges];
+        if (readStories.length >= 5  && !nextBadges.includes('story_5'))   nextBadges.push('story_5');
+        if (readStories.length >= 15 && !nextBadges.includes('story_15'))  nextBadges.push('story_15');
+        if (readStories.length >= DATA.stories.length && !nextBadges.includes('story_all')) nextBadges.push('story_all');
+        return { ...u, ...cap.patch, readStories, badges: nextBadges };
+      });
+      AudioFX.chime();
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [story]);
+
+  // 详情页
+  if (story) {
+    const sc = cats.find(c => c.id === story.cat);
+    const alreadyRead = readSet.has(story.id);
+    return (
+      <div className="min-h-full">
+        <Header title="猫咪小故事" onBack={() => setOpenId(null)}
+          right={<FishCoinBadge n={user.fishCoins} onClick={() => go('shelter')} />} />
+        <div className="p-5 pb-32 max-w-md mx-auto">
+          <div className="text-center mb-4">
+            <div className="text-7xl mb-2">{story.emoji}</div>
+            <div className="inline-block text-[11px] px-2 py-0.5 rounded-full"
+              style={{ background: (sc?.color || '#aaa') + '22', color: sc?.color || '#666' }}>
+              {sc?.emoji} {sc?.label}
+            </div>
+            <h2 className="text-xl font-bold text-stone-700 mt-2">{story.title}</h2>
+            {story.sub && <div className="text-sm text-stone-500 mt-1">{story.sub}</div>}
+          </div>
+
+          <Card className="!p-5">
+            <p className="text-[15px] leading-relaxed text-stone-700 whitespace-pre-wrap">{story.text}</p>
+          </Card>
+
+          <div className="text-center mt-4">
+            {alreadyRead ? (
+              <div className="text-xs text-stone-400">✓ 这篇你已经读过啦</div>
+            ) : (
+              <div className="text-xs text-ginger-600">读完会获得 +1 🐟 哦～</div>
+            )}
+          </div>
+
+          {/* 下一篇 */}
+          <div className="mt-5 flex gap-2">
+            <BigButton color="cream" className="flex-1" onClick={() => setOpenId(null)}>← 返回列表</BigButton>
+            <BigButton className="flex-1" onClick={() => {
+              const idx = DATA.stories.findIndex(s => s.id === story.id);
+              const next = DATA.stories[(idx + 1) % DATA.stories.length];
+              setOpenId(next.id);
+            }}>下一篇 →</BigButton>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 列表页
+  const readCount = (user.readStories || []).length;
+  const total = DATA.stories.length;
+  return (
+    <div className="min-h-full">
+      <Header title="猫咪小故事" onBack={() => go('home')}
+        right={<FishCoinBadge n={user.fishCoins} onClick={() => go('shelter')} />} />
+      <div className="p-5 pb-32 max-w-md mx-auto">
+        <DailyFishBar user={user} />
+
+        <div className="mb-4 bg-white rounded-xl2 p-3 shadow-soft text-sm text-stone-600">
+          <div className="flex items-center">
+            <span>📚 共 <b className="text-ginger-700">{total}</b> 个有趣的喵咪故事</span>
+            <span className="ml-auto text-stone-400">已读 {readCount} / {total}</span>
+          </div>
+          <div className="h-2 bg-cream-100 rounded-full overflow-hidden mt-2">
+            <div className="h-full bg-ginger-400 transition-all" style={{ width: (readCount/total*100) + '%' }} />
+          </div>
+          <div className="text-[11px] text-stone-400 mt-1.5">每读一篇 +1 🐟（每天上限 20 🐟）</div>
+        </div>
+
+        {/* 分类筛选 */}
+        <div className="flex gap-1.5 overflow-x-auto scrollbar-thin -mx-1 px-1 pb-2 mb-3">
+          {allCats.map(c => {
+            const active = filter === c.id;
+            return (
+              <button key={c.id} onClick={() => { AudioFX.click(); setFilter(c.id); }}
+                className={`paw-press no-tap-highlight flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${active ? 'text-white shadow-pop' : 'bg-white text-stone-600 shadow-soft'}`}
+                style={active ? { background: c.color } : {}}>
+                {c.emoji} {c.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* 故事卡片网格 */}
+        <div className="grid grid-cols-2 gap-2.5">
+          {list.map(s => {
+            const sc = cats.find(c => c.id === s.cat);
+            const read = readSet.has(s.id);
+            return (
+              <button key={s.id} onClick={() => { AudioFX.click(); setOpenId(s.id); }}
+                className={`paw-press no-tap-highlight text-left rounded-xl2 p-3 shadow-soft transition-all ${read ? 'bg-cream-50 opacity-80' : 'bg-white'}`}>
+                <div className="flex items-start gap-2">
+                  <div className="text-3xl">{s.emoji}</div>
+                  {read && <span className="ml-auto text-[10px] bg-mint-400/40 text-mint-700 px-1.5 py-0.5 rounded-full">已读</span>}
+                </div>
+                <div className="mt-2 font-bold text-stone-700 text-sm leading-tight line-clamp-2">{s.title}</div>
+                <div className="text-[11px] text-stone-400 mt-1 line-clamp-2">{s.sub}</div>
+                <div className="text-[10px] mt-1.5" style={{ color: sc?.color }}>{sc?.emoji} {sc?.label}</div>
+              </button>
+            );
+          })}
+        </div>
+
+        {list.length === 0 && (
+          <div className="text-center text-stone-400 py-10">这个分类暂时还没有故事～</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // 🚀 主 App
 // ============================================================
 function App() {
@@ -1505,6 +1729,8 @@ function App() {
     kidName: '',
     fishCoins: 0,                 // 当前持有的小鱼干
     totalFishEarned: 0,           // 累计获得（徽章用）
+    fishToday: 0,                 // 今天已得（每日上限）
+    lastFishDate: '',             // 上次获得鱼干的日期 YYYY-MM-DD
     myCats: [                     // 已领养的猫（送一只橘猫"布丁"开场）
       { id: 'c0', breedId: 'orange', name: '布丁', adoptedAt: Date.now(), intimacy: 60 }
     ],
@@ -1515,7 +1741,8 @@ function App() {
     unlocked: ['house_cat'],      // 猫科动物图鉴解锁
     badges: [],
     artworks: [],
-    poems: []
+    poems: [],
+    readStories: []               // 读过的小故事 id
   });
   const [route, setRoute] = useState('home');
 
@@ -1541,6 +1768,7 @@ function App() {
       {route === 'diary'        && <Diary {...props} />}
       {route === 'mycats'       && <MyCats {...props} />}
       {route === 'about'        && <About {...props} />}
+      {route === 'stories'      && <Stories {...props} />}
       <BottomNav route={route} go={setRoute} />
     </div>
   );
