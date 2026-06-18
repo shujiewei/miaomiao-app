@@ -83,16 +83,16 @@ jobs:
           #     so we MUST declare signingConfigs explicitly here.)
           BUILD_GRADLE=android/app/build.gradle
           if ! grep -q "signingConfigs" "$BUILD_GRADLE"; then
-            cat > /tmp/signing-block.gradle <<'EOF'
-    signingConfigs {
-        debug {
-            storeFile file('debug.keystore')
-            storePassword 'android'
-            keyAlias 'androiddebugkey'
-            keyPassword 'android'
-        }
-    }
-EOF
+            {
+              echo "    signingConfigs {"
+              echo "        debug {"
+              echo "            storeFile file('debug.keystore')"
+              echo "            storePassword 'android'"
+              echo "            keyAlias 'androiddebugkey'"
+              echo "            keyPassword 'android'"
+              echo "        }"
+              echo "    }"
+            } > /tmp/signing-block.gradle
             # Insert after the first "android {" line
             sed -i '/^android {/r /tmp/signing-block.gradle' "$BUILD_GRADLE"
             echo "✅ Injected explicit signingConfigs.debug into build.gradle"
