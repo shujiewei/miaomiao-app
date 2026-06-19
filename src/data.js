@@ -199,59 +199,95 @@
     }
   ];
 
-  // -------------------- 15 个可领养家猫品种 --------------------
-  // rarity: common (5 🐟) / rare (12 🐟) / epic (25 🐟)
+  // -------------------- 25 个可领养品种 --------------------
+  // rarity: common (5 🐟) / rare (12 🐟) / epic (25-40 🐟) / wild (60-80 🐟)
+  // wild: true 的是野生猫科动物（科学观察），不能繁殖
+  // gender 字段是品种的"代表性别"——实际领养时每只都是 50/50 随机
   const breeds = [
     // ===== 中华田园猫 (common) =====
-    { id: 'orange',        name: '橘猫',         emoji: '🐱', deco: '🌞', color: '#f9852a', rarity: 'common', price: 5,
+    { id: 'orange',        name: '橘猫',         emoji: '🐱', deco: '🌞', color: '#f9852a', rarity: 'common', price: 5, gender: 'F',
       temper: ['贪吃','慵懒','黏人'],
       desc: '又叫"橘座"，是中国最常见的家猫之一。十只橘猫九只胖，剩下一只在去吃饭的路上。' },
-    { id: 'cow',           name: '奶牛猫',       emoji: '🐱', deco: '🐮', color: '#3a3a3a', rarity: 'common', price: 5,
+    { id: 'cow',           name: '奶牛猫',       emoji: '🐱', deco: '🐮', color: '#3a3a3a', rarity: 'common', price: 5, gender: 'M',
       temper: ['活泼','爱闯祸','智商高'],
       desc: '黑白花的家猫，江湖人称"奶牛刺客"。看着憨厚，其实可能是猫圈最调皮的一种。' },
-    { id: 'calico',        name: '三花猫',       emoji: '🐱', deco: '🌸', color: '#d97757', rarity: 'common', price: 5,
+    { id: 'calico',        name: '三花猫',       emoji: '🐱', deco: '🌸', color: '#d97757', rarity: 'common', price: 5, gender: 'F',
       temper: ['独立','温柔','聪明'],
       desc: '黑、白、橘三种颜色的猫，几乎全部都是女孩子，因为颜色基因长在 X 染色体上。' },
-    { id: 'tortoise',      name: '玳瑁猫',       emoji: '🐱', deco: '🍂', color: '#6f4423', rarity: 'common', price: 5,
+    { id: 'tortoise',      name: '玳瑁猫',       emoji: '🐱', deco: '🍂', color: '#6f4423', rarity: 'common', price: 5, gender: 'F',
       temper: ['有个性','聪明','认主'],
       desc: '黑色、橘色像玳瑁壳那样交织在一起的猫，每一只的花纹都独一无二。' },
-    { id: 'tabby',         name: '狸花猫',       emoji: '🐱', deco: '🐅', color: '#a08055', rarity: 'common', price: 5,
+    { id: 'tabby',         name: '狸花猫',       emoji: '🐱', deco: '🐅', color: '#a08055', rarity: 'common', price: 5, gender: 'M',
       temper: ['勇敢','会抓老鼠','身体棒'],
       desc: '中国土生土长的小老虎，是世界上最古老的猫之一，被列为中国本土纯种猫。' },
+    { id: 'black',         name: '黑猫',         emoji: '🐈‍⬛', deco: '🌑', color: '#222222', rarity: 'common', price: 5, gender: 'M',
+      temper: ['神秘','优雅','夜行侠'],
+      desc: '一身漆黑的家猫，眼睛像黄宝石一样亮。在英国和日本被认为是带来好运的猫。' },
+    { id: 'white',         name: '白猫',         emoji: '🐱', deco: '☁️', color: '#e8e8e8', rarity: 'common', price: 5, gender: 'F',
+      temper: ['乖巧','安静','像棉花糖'],
+      desc: '一身雪白的家猫，干干净净像一团棉花糖。蓝眼睛的白猫有时听不见，要更细心地照顾它。' },
 
     // ===== 短毛系列 (rare) =====
-    { id: 'british_blue',  name: '英短蓝猫',     emoji: '🐱', deco: '💙', color: '#7e8d9e', rarity: 'rare', price: 12,
+    { id: 'british_blue',  name: '英短蓝猫',     emoji: '🐱', deco: '💙', color: '#7e8d9e', rarity: 'rare', price: 12, gender: 'M',
       temper: ['绅士','安静','圆滚滚'],
       desc: '英国的国宝猫，蓝灰色短毛，圆脸圆眼圆爪子，是"包子脸"代表选手。' },
-    { id: 'british_silver',name: '银渐层',       emoji: '🐱', deco: '⚪', color: '#c8ced4', rarity: 'rare', price: 12,
+    { id: 'british_silver',name: '银渐层',       emoji: '🐱', deco: '⚪', color: '#c8ced4', rarity: 'rare', price: 12, gender: 'F',
       temper: ['优雅','冷静','爱干净'],
       desc: '英短家族的"银发贵族"，毛尖银白、毛根稍深，被叫做"会走路的绒毛玩具"。' },
-    { id: 'american',      name: '美短虎斑',     emoji: '🐱', deco: '🌀', color: '#b5a98a', rarity: 'rare', price: 12,
+    { id: 'american',      name: '美短虎斑',     emoji: '🐱', deco: '🌀', color: '#b5a98a', rarity: 'rare', price: 12, gender: 'M',
       temper: ['运动健将','机灵','友好'],
       desc: '美国短毛猫，身上有像漩涡一样的银黑色虎斑，是天生的运动员。' },
-    { id: 'ragdoll',       name: '布偶猫',       emoji: '🐱', deco: '😇', color: '#e6d5c2', rarity: 'rare', price: 12,
+    { id: 'ragdoll',       name: '布偶猫',       emoji: '🐱', deco: '😇', color: '#e6d5c2', rarity: 'rare', price: 12, gender: 'F',
       temper: ['黏人','像狗一样','蓝眼睛'],
       desc: '抱起来软得像布娃娃，所以叫"布偶"。蓝眼睛、长毛，性格超级温柔。' },
-    { id: 'exotic',        name: '加菲猫',       emoji: '🐱', deco: '😾', color: '#e0b78a', rarity: 'rare', price: 12,
+    { id: 'exotic',        name: '加菲猫',       emoji: '🐱', deco: '😾', color: '#e0b78a', rarity: 'rare', price: 12, gender: 'M',
       temper: ['扁脸','懒','可爱嘟嘴'],
       desc: '正式名字叫"异国短毛猫"，是波斯猫和美短的孩子，自带"不开心"扁脸。' },
-    { id: 'scottish',      name: '苏格兰折耳',   emoji: '🐱', deco: '📎', color: '#98826b', rarity: 'rare', price: 12,
+    { id: 'scottish',      name: '苏格兰折耳',   emoji: '🐱', deco: '📎', color: '#98826b', rarity: 'rare', price: 12, gender: 'F',
       temper: ['乖巧','喜欢躺平','耳朵折'],
       desc: '耳朵向前折下来的小猫，喜欢用"佛祖坐"的姿势躺着，软糯糯的。' },
 
     // ===== 长毛/特别 (epic) =====
-    { id: 'maine_coon',    name: '缅因猫',       emoji: '🐱', deco: '🦁', color: '#735b3e', rarity: 'epic', price: 25,
+    { id: 'maine_coon',    name: '缅因猫',       emoji: '🐱', deco: '🦁', color: '#735b3e', rarity: 'epic', price: 25, gender: 'M',
       temper: ['巨型','温柔','像狗'],
       desc: '家猫里的"巨人"，最大能长到 11 公斤！性格特别温和，被叫做"温柔的巨人"。' },
-    { id: 'persian',       name: '波斯猫',       emoji: '🐱', deco: '👑', color: '#d7c6b5', rarity: 'epic', price: 25,
+    { id: 'persian',       name: '波斯猫',       emoji: '🐱', deco: '👑', color: '#d7c6b5', rarity: 'epic', price: 25, gender: 'F',
       temper: ['高贵','优雅','要梳毛'],
       desc: '一身长长的丝绸毛，脸圆圆扁扁，是猫界的"古典美人"。' },
-    { id: 'siamese',       name: '暹罗猫',       emoji: '🐱', deco: '🗣️', color: '#c7a989', rarity: 'epic', price: 25,
+    { id: 'siamese',       name: '暹罗猫',       emoji: '🐱', deco: '🗣️', color: '#c7a989', rarity: 'epic', price: 25, gender: 'M',
       temper: ['话痨','聪明','认主'],
       desc: '泰国的国宝猫，蓝眼睛，鼻子、耳朵、爪子是深色的。它会一直跟你"聊天"。' },
-    { id: 'sphynx',        name: '斯芬克斯无毛猫',emoji: '🐱', deco: '👽', color: '#f4d4b8', rarity: 'epic', price: 25,
+    { id: 'sphynx',        name: '斯芬克斯无毛猫',emoji: '🐱', deco: '👽', color: '#f4d4b8', rarity: 'epic', price: 25, gender: 'F',
       temper: ['爱抱抱','怕冷','长得像 ET'],
-      desc: '没有毛的猫，皮肤摸起来像桃子。因为没毛所以怕冷，特别喜欢钻被窝。' }
+      desc: '没有毛的猫，皮肤摸起来像桃子。因为没毛所以怕冷，特别喜欢钻被窝。' },
+    { id: 'bengal',        name: '豹猫',         emoji: '🐆', deco: '🌿', color: '#c98a3e', rarity: 'epic', price: 30, gender: 'M',
+      temper: ['好动','聪明','爱玩水'],
+      desc: '豹猫（Bengal）身上有玫瑰花斑，像缩小版的小花豹。爱跑爱跳，还喜欢玩水，是家猫里的"运动达人"。' },
+    { id: 'toyger',        name: '玩具虎',       emoji: '🐯', deco: '🎯', color: '#cf8a30', rarity: 'epic', price: 30, gender: 'F',
+      temper: ['活泼','有条纹','黏人'],
+      desc: '玩具虎（Toyger）是按"小老虎"的样子培育出来的家猫，身上有橘黑条纹，性格却像普通家猫一样温柔。' },
+
+    // ===== 杂交 (epic) =====
+    { id: 'savannah',      name: '萨凡纳猫',     emoji: '🐱', deco: '🌾', color: '#cba365', rarity: 'epic', price: 40, gender: 'M',
+      temper: ['腿长','活泼','聪明'],
+      desc: '萨凡纳猫（Savannah）是家猫和薮猫杂交出来的孩子，腿很长、跳得很高，是体型最大的家猫之一。' },
+
+    // ===== 野生猫科 (wild · 仅供观察, 不能繁殖) =====
+    { id: 'tiger_wild',    name: '老虎',         emoji: '🐯', deco: '🌳', color: '#e96a16', rarity: 'wild', price: 80, gender: 'M', wild: true,
+      temper: ['威猛','爱泡水','王者气质'],
+      desc: '森林之王！野生大猫里体型最大，每只老虎的条纹都不一样。我们在 App 里只是科学观察哦，老虎不是宠物。' },
+    { id: 'leopard_wild',  name: '花豹',         emoji: '🐆', deco: '🌿', color: '#a86a2c', rarity: 'wild', price: 80, gender: 'F', wild: true,
+      temper: ['敏捷','会爬树','安静'],
+      desc: '花豹身上长着像玫瑰一样的花斑，是非常会爬树的大猫，喜欢把猎物拖到树上慢慢吃。' },
+    { id: 'snow_leopard',  name: '雪豹',         emoji: '❄️', deco: '🏔️', color: '#7aa9c9', rarity: 'wild', price: 80, gender: 'F', wild: true,
+      temper: ['稀有','耐寒','跳得远'],
+      desc: '住在 3000 米以上高山雪原的"雪山幽灵"。它的尾巴和身体一样长，可以当围巾，跑步时帮它平衡。' },
+    { id: 'lynx',          name: '猞猁',         emoji: '🐈', deco: '👂', color: '#9e8055', rarity: 'wild', price: 60, gender: 'M', wild: true,
+      temper: ['独行','害羞','耳朵尖'],
+      desc: '猞猁耳朵尖上有一撮黑毛，是天生的"听力增强器"。脚掌大大的像穿了雪鞋，在雪地里走不会陷下去。' },
+    { id: 'serval',        name: '薮猫',         emoji: '🐈', deco: '🌾', color: '#d4a45e', rarity: 'wild', price: 60, gender: 'F', wild: true,
+      temper: ['长腿','耳朵大','跳得高'],
+      desc: '薮猫是非洲草原的"长腿模特"，耳朵超大，能听到地下老鼠的脚步声，捕猎成功率比老虎还高。' }
   ];
 
   // -------------------- 题库（30 题）--------------------
@@ -549,7 +585,7 @@
     { id: 'cuddle_5',      name: '撸猫达人',     emoji: '🥰', cond: '陪猫互动 5 次' },
     { id: 'first_adopt',   name: '第 1 只小猫',  emoji: '🏠', cond: '领养第 1 只猫' },
     { id: 'cats_5',        name: '小猫管家',     emoji: '🐾', cond: '领养 5 只猫' },
-    { id: 'all_breeds',    name: '猫舍主理人',   emoji: '🎖️', cond: '集齐全部 15 个品种' },
+    { id: 'all_breeds',    name: '猫舍主理人',   emoji: '🎖️', cond: '集齐全部 20 个家猫品种' },
     { id: 'fishcoins_50',  name: '小鱼干富翁',   emoji: '🐟', cond: '累计获得 50 个小鱼干' },
     { id: 'photo_quiz_all',name: '看图识猫达人', emoji: '📸', cond: '答对全部 15 道看图识猫' },
     { id: 'story_5',       name: '听故事的小耳朵', emoji: '🎧', cond: '读完 5 个小故事' },
@@ -558,7 +594,11 @@
     { id: 'story_quiz_all',name: '故事大冠军',     emoji: '🏆', cond: '答对全部 20 道故事题' },
     { id: 'feed_first',    name: '第一次喂猫',     emoji: '🍱', cond: '第一次给猫咪喂小鱼干' },
     { id: 'feed_10',       name: '投喂能手',       emoji: '🐟', cond: '累计喂猫 10 次' },
-    { id: 'intimacy_full', name: '最佳伙伴',       emoji: '💞', cond: '任意一只猫亲密度达到 100' }
+    { id: 'intimacy_full', name: '最佳伙伴',       emoji: '💞', cond: '任意一只猫亲密度达到 100' },
+    { id: 'wake_dormant',  name: '叫醒小懒猫',     emoji: '⏰', cond: '把睡着的猫咪喂醒一次' },
+    { id: 'wild_first',    name: '野猫科观察员',   emoji: '🌿', cond: '第一次领养野生猫科动物' },
+    { id: 'bred_first',    name: '小宝宝出生',     emoji: '🐣', cond: '迎来第一只小猫宝宝' },
+    { id: 'bred_5',        name: '猫舍奶爸/妈',     emoji: '🍼', cond: '一共生了 5 只小猫宝宝' }
   ];
 
   // -------------------- 起名建议（小朋友可参考） --------------------

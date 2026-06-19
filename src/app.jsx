@@ -160,6 +160,181 @@ function applyFishCap(u, requested) {
 }
 
 // ============================================================
+// 🍱 喂养 / 休眠 / 性别 / 繁殖 - 共享常量与小工具 (v0.11)
+// ============================================================
+const HUNGER_HOURS_PECKISH = 24;   // 24h 后开始有点饿
+const HUNGER_HOURS_HUNGRY  = 48;   // 48h 好饿
+const HUNGER_HOURS_DORMANT = 72;   // 72h 进入休眠
+const WILD_HUNGER_MULT     = 1.5;  // 野生猫科：饿/休眠都慢 1.5 倍
+const DORMANT_RECYCLE_DAYS = 10;   // 睡满 10 天 → 自动回猫舍
+const PAIR_BOND_DAYS       = 20;   // 一对配偶共度 20 天 → 一窝小猫
+const FEED_WAKE_COST       = 2;    // 喂醒休眠猫要 2 🐟（普通喂食 1 🐟）
+
+function getBreed(breedId) {
+  return DATA.breeds.find(b => b.id === breedId);
+}
+function isWildCat(cat, breed) {
+  return !!((breed || getBreed(cat.breedId))?.wild);
+}
+function hashStrToBool(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  return (h & 1) === 0;
+}
+function deterministicGender(cat, breed) {
+  return hashStrToBool(cat.id || '') ? 'F' : 'M';
+}
+function randomGender() {
+  return Math.random() < 0.5 ? 'M' : 'F';
+}
+function genderLabel(g) {
+  return g === 'F' ? '♀ 母' : '♂ 公';
+}
+function genderColor(g) {
+  return g === 'F' ? '#e57399' : '#4f86d6';
+}
+
+// 计算饱腹/休眠状态。lazy — 只读，不写入 state。
+// stage: 'full' | 'peckish' | 'hungry' | 'dormant' | 'should_dormant'
+function hungerStateOf(cat, breed) {
+  if (!cat) return null;
+  const isWild = isWildCat(cat, breed);
+  const mul = isWild ? WILD_HUNGER_MULT : 1;
+  const since = cat.lastFedAt || cat.adoptedAt || Date.now();
+  const hours = (Date.now() - since) / (1000 * 3600);
+  if (cat.dormant) {
+    return { stage: 'dormant', emoji: '😴', label: '已睡着', hours, mul, isWild };
+  }
+  if (hours < HUNGER_HOURS_PECKISH * mul)
+    return { stage: 'full',     emoji: '😺', label: '饱饱的',   hours, mul, isWild };
+  if (hours < HUNGER_HOURS_HUNGRY  * mul)
+    return { stage: 'peckish',  emoji: '😼', label: '有点饿了', hours, mul, isWild };
+  if (hours < HUNGER_HOURS_DORMANT * mul)
+    return { stage: 'hungry',   emoji: '😿', label: '好饿好饿', hours, mul, isWild };
+  return { stage: 'should_dormant', emoji: '😴', label: '快睡着了', hours, mul, isWild };
+}
+
+// 把"应该休眠"的猫标记为休眠，并把"睡满 10 天"的猫送回猫舍。
+// 返回新的 user 对象（如果什么都没变就返回 null）。
+function applyDormancyCleanup(user) {
+  const now = Date.now();
+  let changed = false;
+  let myCats = user.myCats.map(c => c);
+  let activeCatId = user.activeCatId;
+  let returnedCats = [];
+
+  // 1) 应该休眠的猫
+  myCats = myCats.map(c => {
+    if (c.dormant) return c;
+    const breed = getBreed(c.breedId);
+    const mul = (breed && breed.wild) ? WILD_HUNGER_MULT : 1;
+    const since = c.lastFedAt || c.adoptedAt || now;
+    const hours = (now - since) / (1000 * 3600);
+    if (hours >= HUNGER_HOURS_DORMANT * mul) {
+      changed = true;
+      return { ...c, dormant: true, dormantSince: now - (hours - HUNGER_HOURS_DORMANT * mul) * 3600 * 1000 };
+    }
+    return c;
+  });
+
+  // 2) 睡满 10 天的猫送回猫舍
+  myCats = myCats.filter(c => {
+    if (c.dormant && c.dormantSince) {
+      const days = (now - c.dormantSince) / (1000 * 3600 * 24);
+      if (days >= DORMANT_RECYCLE_DAYS) {
+        changed = true;
+        returnedCats.push(c);
+        return false;
+      }
+    }
+    return true;
+  });
+
+  if (myCats.length === 0 && returnedCats.length > 0) {
+    // 至少留一只——如果全被回收，把回收时间最短的那只"留"在家，其他真送走
+    const all = [...returnedCats].sort((a, b) => (b.dormantSince || 0) - (a.dormantSince || 0));
+    const keep = all[0];
+    myCats.push({ ...keep, dormant: false, dormantSince: null, lastFedAt: now, intimacy: Math.max(40, keep.intimacy || 60) });
+    returnedCats = all.slice(1);
+  }
+
+  if (myCats.length > 0 && !myCats.find(c => c.id === activeCatId)) {
+    activeCatId = myCats[0].id;
+  }
+  if (!changed) return { user, returnedCats: [] };
+  return {
+    user: { ...user, myCats, activeCatId },
+    returnedCats
+  };
+}
+
+// 一次性数据迁移 - 把缺字段的旧 cat / user 升级到 v0.11 schema
+function migrateUserToV011(user) {
+  const now = Date.now();
+  let changed = false;
+  const myCats = user.myCats.map(c => {
+    const out = { ...c };
+    if (!out.gender) {
+      const breed = getBreed(out.breedId);
+      out.gender = deterministicGender(out, breed);
+      changed = true;
+    }
+    if (!out.lastFedAt) {
+      out.lastFedAt = out.adoptedAt || now;
+      changed = true;
+    }
+    if (typeof out.dormant === 'undefined') {
+      out.dormant = false;
+      out.dormantSince = null;
+      changed = true;
+    }
+    if (!out.generation) {
+      out.generation = 1;
+      changed = true;
+    }
+    return out;
+  });
+  const out = { ...user, myCats };
+  if (typeof out.totalKittens !== 'number') { out.totalKittens = 0; changed = true; }
+  if (!out.pairBonds || typeof out.pairBonds !== 'object') { out.pairBonds = {}; changed = true; }
+  return changed ? out : user;
+}
+
+// 找出当前所有合格的繁殖对。返回 [{ key, m, f }]
+function findEligiblePairs(cats) {
+  const out = [];
+  for (let i = 0; i < cats.length; i++) {
+    for (let j = i + 1; j < cats.length; j++) {
+      const a = cats[i], b = cats[j];
+      if (a.gender === b.gender) continue;
+      const ba = getBreed(a.breedId);
+      const bb = getBreed(b.breedId);
+      if (!ba || !bb) continue;
+      if (ba.wild || bb.wild) continue;
+      if (a.dormant || b.dormant) continue;
+      if ((a.intimacy || 0) < 60 || (b.intimacy || 0) < 60) continue;
+      const m = a.gender === 'M' ? a : b;
+      const f = a.gender === 'F' ? a : b;
+      const key = [a.id, b.id].sort().join('|');
+      out.push({ key, m, f });
+    }
+  }
+  return out;
+}
+
+// 选一个非野生品种作为小猫崽的品种（60% common / 30% rare / 10% epic）
+function pickKittenBreed() {
+  const pool = DATA.breeds.filter(b => !b.wild);
+  const r = Math.random();
+  let tier = 'common';
+  if (r >= 0.6 && r < 0.9) tier = 'rare';
+  else if (r >= 0.9)       tier = 'epic';
+  let cands = pool.filter(b => b.rarity === tier);
+  if (cands.length === 0) cands = pool;
+  return cands[Math.floor(Math.random() * cands.length)];
+}
+
+// ============================================================
 // 共用小组件
 // ============================================================
 function Stars({ n }) {
@@ -304,11 +479,14 @@ function DailyFishBar({ user }) {
   );
 }
 
-function Home({ user, setUser, go, activeCat }) {
+function Home({ user, setUser, go, activeCat, kittenDraft, setKittenDraft }) {
   const [ripples, setRipples] = useState([]);
   const [sparkles, setSparkles] = useState([]);
   const [showRealPhoto, setShowRealPhoto] = useState(false);
   const breed = activeCat ? DATA.breeds.find(b => b.id === activeCat.breedId) : null;
+  const hunger = activeCat ? hungerStateOf(activeCat, breed) : null;
+  const dormant = !!(activeCat && activeCat.dormant);
+  const wild = !!(breed && breed.wild);
 
   const flipAvatar = () => {
     AudioFX.click();
@@ -317,6 +495,7 @@ function Home({ user, setUser, go, activeCat }) {
 
   const pet = () => {
     if (!activeCat) return;
+    if (dormant) { AudioFX.pop(); return; }
     AudioFX.purr();
     setUser(u => {
       const totalCuddles = (u.totalCuddles || 0) + 1;
@@ -333,18 +512,26 @@ function Home({ user, setUser, go, activeCat }) {
 
   const feed = () => {
     if (!activeCat) return;
-    if (user.fishCoins < 1) { AudioFX.wrong(); return; }
-    if (activeCat.intimacy >= 100) { AudioFX.pop(); return; }
+    const cost = dormant ? FEED_WAKE_COST : 1;
+    if (user.fishCoins < cost) { AudioFX.wrong(); return; }
     AudioFX.chime();
     AudioFX.meow();
+    const wakingFromDormancy = dormant;
     setUser(u => {
       const totalFeeds = (u.totalFeeds || 0) + 1;
-      const myCats = u.myCats.map(c => c.id === activeCat.id ? { ...c, intimacy: Math.min(100, c.intimacy + 10) } : c);
+      const myCats = u.myCats.map(c => c.id === activeCat.id ? {
+        ...c,
+        intimacy: Math.min(100, (c.intimacy || 0) + 10),
+        lastFedAt: Date.now(),
+        dormant: false,
+        dormantSince: null
+      } : c);
       const badges = [...u.badges];
       if (!badges.includes('feed_first')) badges.push('feed_first');
       if (totalFeeds >= 10 && !badges.includes('feed_10')) badges.push('feed_10');
+      if (wakingFromDormancy && !badges.includes('wake_dormant')) badges.push('wake_dormant');
       if (myCats.some(c => c.intimacy >= 100) && !badges.includes('intimacy_full')) badges.push('intimacy_full');
-      return { ...u, fishCoins: u.fishCoins - 1, totalFeeds, myCats, badges };
+      return { ...u, fishCoins: u.fishCoins - cost, totalFeeds, myCats, badges };
     });
     const burst = Array.from({ length: 6 }).map(() => ({
       id: Date.now() + Math.random(),
@@ -356,8 +543,28 @@ function Home({ user, setUser, go, activeCat }) {
     setTimeout(() => setSparkles(s => s.filter(x => !burst.find(b => b.id === x.id))), 1200);
   };
 
-  const canFeed = activeCat && user.fishCoins >= 1 && activeCat.intimacy < 100;
-  const fullIntimacy = activeCat && activeCat.intimacy >= 100;
+  const feedCost = dormant ? FEED_WAKE_COST : 1;
+  const canFeed = !!activeCat && user.fishCoins >= feedCost;
+  const fullIntimacy = activeCat && activeCat.intimacy >= 100 && !dormant;
+
+  // 配对中 - 计算合格的对，并展示进度
+  const pairs = findEligiblePairs(user.myCats);
+  const now = Date.now();
+  const pairView = pairs.map(p => {
+    const bond = (user.pairBonds || {})[p.key];
+    const startAt = bond ? bond.startAt : now;
+    const days = Math.max(0, (now - startAt) / (1000 * 3600 * 24));
+    const ready = days >= PAIR_BOND_DAYS;
+    return { ...p, days, ready, startAt };
+  });
+  const readyPair = pairView.find(p => p.ready);
+  const startMintFor = (p) => {
+    AudioFX.chime();
+    const breed = pickKittenBreed();
+    const gender = randomGender();
+    setKittenDraft({ breed, gender, parentIds: [p.m.id, p.f.id], pairKey: p.key });
+    go('kitten');
+  };
 
   return (
     <div className="min-h-full">
@@ -377,14 +584,23 @@ function Home({ user, setUser, go, activeCat }) {
                   style={{ '--fx': s.fx, '--fy': s.fy }}>{s.emoji}</span>
               ))}
               <button onClick={flipAvatar}
-                className="paw-press no-tap-highlight floaty rounded-full shadow-pop relative">
+                className="paw-press no-tap-highlight floaty rounded-full shadow-pop relative"
+                style={{ filter: dormant ? 'grayscale(0.85) brightness(0.9)' : 'none' }}>
                 {showRealPhoto
                   ? <RealCatPhoto breed={breed} size="lg" />
-                  : <CatAvatar breed={breed} size="lg" />}
+                  : <CatAvatar breed={breed} size="lg" dim={dormant} />}
                 <span className="absolute -bottom-1 right-1 bg-white/95 rounded-full px-2 py-0.5 text-[10px] font-bold text-stone-500 shadow-soft">
                   {showRealPhoto ? '📸 真实' : '🎨 卡通'}
                 </span>
               </button>
+              {dormant && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="bg-white/90 rounded-full px-4 py-2 shadow-pop text-center">
+                    <div className="text-3xl">😴</div>
+                    <div className="text-xs font-bold text-stone-600 mt-0.5">睡着了…</div>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="text-center -mt-2 mb-1">
               <button onClick={() => { AudioFX.click(); go('gallery', { breedId: breed.id }); }}
@@ -393,36 +609,64 @@ function Home({ user, setUser, go, activeCat }) {
               </button>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold" style={{ color: breed.color }}>{activeCat.name}</div>
+              <div className="text-2xl font-bold flex items-center justify-center gap-2" style={{ color: breed.color }}>
+                <span>{activeCat.name}</span>
+                <span className="text-base px-1.5 py-0.5 rounded-full text-white"
+                  style={{ background: genderColor(activeCat.gender) }}>
+                  {genderLabel(activeCat.gender)}
+                </span>
+                {wild && <span className="text-xs bg-amber-200 text-amber-800 px-1.5 py-0.5 rounded-full">🌿 野生</span>}
+              </div>
               <div className="text-xs text-stone-500 mt-0.5">{breed.name} · {breed.temper.slice(0, 2).join(' · ')}</div>
             </div>
 
             {/* 互动按钮：摸摸 / 喂猫 */}
             <div className="max-w-sm mx-auto mt-4 flex justify-center gap-4">
-              <button onClick={pet}
-                className="paw-press no-tap-highlight flex flex-col items-center justify-center w-20 h-20 rounded-full bg-ginger-100 text-ginger-700 shadow-soft active:bg-ginger-200">
-                <span className="text-2xl">🫱</span>
-                <span className="text-xs font-bold mt-0.5">摸摸</span>
-              </button>
-              <button onClick={feed} disabled={!canFeed}
-                className={`paw-press no-tap-highlight flex flex-col items-center justify-center w-20 h-20 rounded-full shadow-soft transition-all ${canFeed ? 'bg-mint-400/30 text-mint-600 active:bg-mint-400/50' : 'bg-stone-100 text-stone-400'}`}>
-                <span className="text-2xl">🐟</span>
-                <span className="text-[11px] font-bold mt-0.5 leading-tight">
-                  {fullIntimacy ? '已经很饱了！' : (user.fishCoins < 1 ? '🐟 不够' : '喂猫 -1🐟')}
+              {!dormant && (
+                <button onClick={pet}
+                  className="paw-press no-tap-highlight flex flex-col items-center justify-center w-20 h-20 rounded-full bg-ginger-100 text-ginger-700 shadow-soft active:bg-ginger-200">
+                  <span className="text-2xl">🫱</span>
+                  <span className="text-xs font-bold mt-0.5">摸摸</span>
+                </button>
+              )}
+              <button onClick={feed} disabled={!canFeed || (fullIntimacy && !dormant)}
+                className={`paw-press no-tap-highlight flex flex-col items-center justify-center w-24 h-20 rounded-full shadow-soft transition-all ${dormant ? 'bg-amber-100 text-amber-700 active:bg-amber-200' : (canFeed ? 'bg-mint-400/30 text-mint-600 active:bg-mint-400/50' : 'bg-stone-100 text-stone-400')}`}>
+                <span className="text-2xl">{dormant ? '⏰' : '🐟'}</span>
+                <span className="text-[11px] font-bold mt-0.5 leading-tight text-center px-1">
+                  {dormant
+                    ? (user.fishCoins < FEED_WAKE_COST ? `🐟 ${FEED_WAKE_COST} 不够` : `喂醒 -${FEED_WAKE_COST}🐟`)
+                    : (fullIntimacy ? '已经很饱了' : (user.fishCoins < 1 ? '🐟 不够' : '喂猫 -1🐟'))}
                 </span>
               </button>
             </div>
-            <div className="text-center text-[11px] text-stone-400 mt-2">用 🐟 喂猫咪，亲密度涨得更快～</div>
+            <div className="text-center text-[11px] text-stone-400 mt-2">
+              {dormant ? '它睡得有点久了，用小鱼干轻轻喂醒它～' : '用 🐟 喂猫咪，亲密度涨得更快～'}
+            </div>
 
-            {/* 亲密度 */}
-            <div className="max-w-sm mx-auto mt-3 mb-5">
-              <div className="flex items-center text-xs text-stone-500 mb-1">
-                <span>亲密度</span><span className="ml-auto">{activeCat.intimacy}/100</span>
+            {/* 饱腹度 / 亲密度 */}
+            <div className="max-w-sm mx-auto mt-3 mb-5 space-y-2">
+              <div>
+                <div className="flex items-center text-xs text-stone-500 mb-1">
+                  <span>{hunger?.emoji} 饱腹度</span>
+                  <span className="ml-auto">{hunger?.label}{wild && <span className="ml-1 text-amber-600">·野生 1.5×</span>}</span>
+                </div>
+                <div className="h-2.5 bg-cream-100 rounded-full overflow-hidden">
+                  {(() => {
+                    const pct = hunger ? Math.max(0, Math.min(100, 100 - (hunger.hours / (HUNGER_HOURS_DORMANT * (hunger.mul || 1))) * 100)) : 0;
+                    const color = hunger?.stage === 'full' ? '#7bd1b4' : hunger?.stage === 'peckish' ? '#f5b53a' : hunger?.stage === 'hungry' ? '#ed7c5c' : '#a8a29e';
+                    return <div className="h-full transition-all" style={{ width: pct + '%', background: color }} />;
+                  })()}
+                </div>
               </div>
-              <div className="h-3 bg-cream-100 rounded-full overflow-hidden">
-                <div className="h-full transition-all" style={{ width: activeCat.intimacy + '%', background: breed.color }} />
+              <div>
+                <div className="flex items-center text-xs text-stone-500 mb-1">
+                  <span>💞 亲密度</span><span className="ml-auto">{activeCat.intimacy}/100</span>
+                </div>
+                <div className="h-3 bg-cream-100 rounded-full overflow-hidden">
+                  <div className="h-full transition-all" style={{ width: activeCat.intimacy + '%', background: breed.color }} />
+                </div>
               </div>
-              <div className="text-center text-[11px] text-stone-400 mt-1">点头像可在卡通 ↔ 真实照片之间切换</div>
+              <div className="text-center text-[11px] text-stone-400">点头像可在卡通 ↔ 真实照片之间切换</div>
             </div>
           </>
         ) : (
@@ -444,11 +688,15 @@ function Home({ user, setUser, go, activeCat }) {
               const b = DATA.breeds.find(x => x.id === c.breedId);
               if (!b) return null;
               const active = c.id === user.activeCatId;
+              const h = hungerStateOf(c, b);
               return (
                 <button key={c.id} onClick={() => { AudioFX.click(); setUser(u => ({ ...u, activeCatId: c.id })); }}
-                  className={`paw-press no-tap-highlight flex-shrink-0 rounded-2xl p-2 text-center transition-all ${active ? 'bg-white shadow-pop ring-2 ring-ginger-400' : 'bg-white/60'}`}
+                  className={`paw-press no-tap-highlight flex-shrink-0 rounded-2xl p-2 text-center transition-all relative ${active ? 'bg-white shadow-pop ring-2 ring-ginger-400' : 'bg-white/60'}`}
                   style={{ width: 72 }}>
-                  <div className="mx-auto"><CatAvatar breed={b} size="sm" /></div>
+                  <div className="mx-auto"><CatAvatar breed={b} size="sm" dim={c.dormant} /></div>
+                  <span className="absolute -top-1 -left-1 text-[11px] bg-white rounded-full px-1 shadow-soft"
+                    style={{ color: genderColor(c.gender) }}>{c.gender === 'F' ? '♀' : '♂'}</span>
+                  <span className="absolute -top-1 -right-1 text-sm">{h?.emoji}</span>
                   <div className="text-[11px] mt-1 font-semibold text-stone-700 truncate">{c.name}</div>
                 </button>
               );
@@ -462,6 +710,45 @@ function Home({ user, setUser, go, activeCat }) {
             </button>
           </div>
         </div>
+
+        {/* 配对中 / 即将出生 */}
+        {pairView.length > 0 && (
+          <div className="max-w-md mx-auto mb-5">
+            <div className="flex items-center text-xs text-stone-500 mb-2">
+              <span className="font-semibold text-stone-600">🍼 配对中（{pairView.length}）</span>
+              <span className="ml-auto text-[10px] text-stone-400">共度 {PAIR_BOND_DAYS} 天 → 一窝小猫</span>
+            </div>
+            <div className="space-y-2">
+              {pairView.map(p => {
+                const ba = getBreed(p.f.breedId);
+                const bb = getBreed(p.m.breedId);
+                const pct = Math.min(100, Math.round(p.days / PAIR_BOND_DAYS * 100));
+                return (
+                  <div key={p.key} className={`rounded-xl2 p-2.5 shadow-soft ${p.ready ? 'bg-pink-50 ring-2 ring-pink-300' : 'bg-white'}`}>
+                    <div className="flex items-center gap-2">
+                      <CatAvatar breed={ba} size="sm" />
+                      <div className="text-pink-400 text-xl">💕</div>
+                      <CatAvatar breed={bb} size="sm" />
+                      <div className="flex-1 min-w-0 text-xs">
+                        <div className="font-semibold text-stone-700 truncate">{p.f.name} ♀ × {p.m.name} ♂</div>
+                        <div className="text-stone-500">{p.ready ? '🎉 一窝小猫等你接！' : `共度 ${p.days.toFixed(1)} / ${PAIR_BOND_DAYS} 天`}</div>
+                        <div className="h-1.5 bg-cream-100 rounded-full overflow-hidden mt-1">
+                          <div className="h-full transition-all" style={{ width: pct + '%', background: p.ready ? '#ec4899' : '#f9a8d4' }} />
+                        </div>
+                      </div>
+                    </div>
+                    {p.ready && (
+                      <button onClick={() => startMintFor(p)}
+                        className="paw-press no-tap-highlight w-full mt-2 bg-pink-500 text-white font-semibold rounded-xl2 py-2 text-sm">
+                        🍼 去领小宝宝
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* 模块卡 */}
         <div className="grid grid-cols-2 gap-3 max-w-md mx-auto">
@@ -941,8 +1228,10 @@ function CatDay({ user, setUser, go, activeCat }) {
   const [ripples, setRipples] = useState([]);
   const breed = activeCat ? DATA.breeds.find(b => b.id === activeCat.breedId) : null;
 
+  const dormant = !!(activeCat && activeCat.dormant);
   const tap = () => {
     if (!activeCat) return;
+    if (dormant) { AudioFX.pop(); return; }
     if (active.action === 'purr' || active.action === 'cuddle') AudioFX.purr();
     else if (active.action === 'feed' || active.action === 'play') AudioFX.meow();
     else AudioFX.pop();
@@ -989,10 +1278,10 @@ function CatDay({ user, setUser, go, activeCat }) {
             {ripples.map(id => <span key={id} className="purr-ring"></span>)}
             <button onClick={tap}
               className="paw-press no-tap-highlight floaty grid place-items-center rounded-full shadow-pop">
-              {breed ? <CatAvatar breed={breed} size="md" /> : <div className="w-20 h-20 bg-white rounded-full grid place-items-center text-5xl">🐱</div>}
+              {breed ? <CatAvatar breed={breed} size="md" dim={dormant} /> : <div className="w-20 h-20 bg-white rounded-full grid place-items-center text-5xl">🐱</div>}
             </button>
           </div>
-          <div className="mt-2 text-xs text-stone-500">点我看看</div>
+          <div className="mt-2 text-xs text-stone-500">{dormant ? '😴 它睡着了，先去首页喂醒它～' : '点我看看'}</div>
           <div className="mt-3 font-bold text-xl" style={{ color: active.color }}>{active.time} · {active.title}</div>
           <p className="text-stone-700 mt-2 leading-relaxed">{active.desc}</p>
           <div className="mt-4 bg-white rounded-xl2 p-3 text-sm text-stone-600 leading-relaxed">
@@ -1353,11 +1642,13 @@ function MyCats({ user, setUser, go }) {
             const b = DATA.breeds.find(x => x.id === c.breedId);
             if (!b) return null;
             const active = c.id === user.activeCatId;
+            const h = hungerStateOf(c, b);
             return (
               <Card key={c.id} className={`!p-3 ${active ? 'ring-2 ring-ginger-400' : ''}`}>
                 <div className="flex items-center gap-3">
-                  <button onClick={() => setActive(c)} className="paw-press no-tap-highlight">
-                    <CatAvatar breed={b} size="md" />
+                  <button onClick={() => setActive(c)} className="paw-press no-tap-highlight relative">
+                    <CatAvatar breed={b} size="md" dim={c.dormant} />
+                    <span className="absolute -bottom-1 -right-1 text-lg">{h?.emoji}</span>
                   </button>
                   <div className="flex-1 min-w-0">
                     {editing === c.id ? (
@@ -1369,11 +1660,15 @@ function MyCats({ user, setUser, go }) {
                       </div>
                     ) : (
                       <>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="font-bold text-stone-800 truncate">{c.name}</span>
+                          <span className="text-[10px] px-1 rounded-full text-white"
+                            style={{ background: genderColor(c.gender) }}>{c.gender === 'F' ? '♀' : '♂'}</span>
+                          {b.wild && <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">🌿 野生</span>}
+                          {c.generation === 2 && <span className="text-[10px] bg-pink-100 text-pink-700 px-1.5 py-0.5 rounded-full">🐣 第 2 代</span>}
                           {active && <span className="text-[10px] bg-ginger-100 text-ginger-700 px-1.5 py-0.5 rounded-full">陪伴中</span>}
                         </div>
-                        <div className="text-xs text-stone-500">{b.name} · 亲密度 {c.intimacy}</div>
+                        <div className="text-xs text-stone-500">{b.name} · {h?.label} · 亲密度 {c.intimacy}</div>
                         <div className="mt-1 h-1.5 bg-cream-100 rounded-full overflow-hidden">
                           <div className="h-full" style={{ width: c.intimacy + '%', background: b.color }} />
                         </div>
@@ -1522,9 +1817,9 @@ function About({ user, setUser, go }) {
         <Card>
           <div className="font-bold text-stone-700 mb-2">关于这个 App</div>
           <p className="text-sm text-stone-600 leading-relaxed">
-            《喵喵小百科》给爱猫的小朋友：10 种猫科动物图鉴、45 道题（含 15 道看图识猫）、15 个家猫品种可领养、"猫的一天"、画板与小诗。
+            《喵喵小百科》给爱猫的小朋友：10 种猫科动物图鉴、45 道题（含 15 道看图识猫）、25 个品种可领养（含 5 只野生猫科观察对象）、🍱 喂养系统、💕 配对繁殖、"猫的一天"、画板与小诗。
           </p>
-          <p className="text-xs text-stone-400 mt-3">v0.10 · 数据保存在本地，可导出备份 · 每日 🐟 上限 20</p>
+          <p className="text-xs text-stone-400 mt-3">v0.11 · 数据保存在本地，可导出备份 · 每日 🐟 上限 20</p>
         </Card>
 
         <Card>
@@ -1552,17 +1847,23 @@ function About({ user, setUser, go }) {
 // ============================================================
 function Shelter({ user, setUser, go }) {
   const [pick, setPick] = useState(null);  // 当前选中的品种
+  const [pickGender, setPickGender] = useState('M');
   const [step, setStep] = useState('browse'); // browse | detail | naming
   const [newName, setNewName] = useState('');
 
   const breedsByRarity = {
-    common: DATA.breeds.filter(b => b.rarity === 'common'),
-    rare:   DATA.breeds.filter(b => b.rarity === 'rare'),
-    epic:   DATA.breeds.filter(b => b.rarity === 'epic')
+    common: DATA.breeds.filter(b => b.rarity === 'common' && !b.wild),
+    rare:   DATA.breeds.filter(b => b.rarity === 'rare'   && !b.wild),
+    epic:   DATA.breeds.filter(b => b.rarity === 'epic'   && !b.wild),
+    wild:   DATA.breeds.filter(b => b.wild)
   };
+  const totalDomestic = DATA.breeds.filter(b => !b.wild).length;
 
   const ownedCount = (breedId) => user.myCats.filter(c => c.breedId === breedId).length;
-  const uniqueOwned = new Set(user.myCats.map(c => c.breedId)).size;
+  const uniqueOwned = new Set(user.myCats.map(c => c.breedId).filter(id => {
+    const b = DATA.breeds.find(x => x.id === id);
+    return b && !b.wild;
+  })).size;
 
   const startAdopt = (breed) => {
     if (user.fishCoins < breed.price) {
@@ -1571,6 +1872,7 @@ function Shelter({ user, setUser, go }) {
       return;
     }
     setPick(breed);
+    setPickGender(randomGender());
     setNewName('');
     setStep('naming');
   };
@@ -1584,27 +1886,45 @@ function Shelter({ user, setUser, go }) {
   const finalize = () => {
     const nm = newName.trim() || DATA.nameIdeas[Math.floor(Math.random() * DATA.nameIdeas.length)];
     const id = 'c' + Date.now();
+    const adoptedAt = Date.now();
+    const wild = !!pick.wild;
     setUser(u => {
-      const myCats = [...u.myCats, { id, breedId: pick.id, name: nm, adoptedAt: Date.now(), intimacy: 60 }];
-      const uniq = new Set(myCats.map(c => c.breedId)).size;
+      const myCats = [...u.myCats, {
+        id,
+        breedId: pick.id,
+        name: nm,
+        adoptedAt,
+        intimacy: 60,
+        gender: pickGender,
+        lastFedAt: adoptedAt,
+        dormant: false,
+        dormantSince: null,
+        generation: 1
+      }];
+      const uniq = new Set(myCats.map(c => c.breedId).filter(id => {
+        const b = DATA.breeds.find(x => x.id === id);
+        return b && !b.wild;
+      })).size;
       const badges = [...u.badges];
       if (myCats.length >= 2 && !badges.includes('first_adopt')) badges.push('first_adopt');
       if (myCats.length >= 5 && !badges.includes('cats_5')) badges.push('cats_5');
-      if (uniq >= DATA.breeds.length && !badges.includes('all_breeds')) badges.push('all_breeds');
+      if (uniq >= totalDomestic && !badges.includes('all_breeds')) badges.push('all_breeds');
+      if (wild && !badges.includes('wild_first')) badges.push('wild_first');
       return { ...u, myCats, activeCatId: id, fishCoins: u.fishCoins - pick.price, badges };
     });
     AudioFX.chime();
     setStep('browse');
     setPick(null);
     setNewName('');
-    setTimeout(() => alert(`${nm} 加入你家啦，回首页摸摸它吧！`), 200);
+    setTimeout(() => alert(`${nm}（${genderLabel(pickGender)}）加入你家啦，回首页摸摸它吧！`), 200);
   };
 
   // ===== 起名页 =====
   if (step === 'naming' && pick) {
+    const wild = !!pick.wild;
     return (
       <div className="min-h-full">
-        <Header title={`领养 ${pick.name}`} onBack={() => { setStep('browse'); setPick(null); }} />
+        <Header title={`${wild ? '观察' : '领养'} ${pick.name}`} onBack={() => { setStep('browse'); setPick(null); }} />
         <div className="px-5 pt-4 pb-32 max-w-md mx-auto text-center">
           <div className="flex items-center justify-center gap-3">
             <div className="floaty"><CatAvatar breed={pick} size="md" /></div>
@@ -1612,9 +1932,22 @@ function Shelter({ user, setUser, go }) {
             <RealCatPhoto breed={pick} size="md" />
           </div>
           <div className="text-[10px] text-stone-400 mt-1">卡通 ↔ 真实样子</div>
-          <div className="mt-3 text-xs text-stone-500">你的新朋友是</div>
-          <div className="text-xl font-bold" style={{ color: pick.color }}>{pick.name}</div>
+          <div className="mt-3 text-xs text-stone-500">你的新朋友是一只</div>
+          <div className="mt-1 inline-flex items-center gap-2">
+            <span className="text-base px-2 py-0.5 rounded-full text-white font-bold"
+              style={{ background: genderColor(pickGender) }}>
+              {genderLabel(pickGender)}{pickGender === 'F' ? '猫' : '猫'}
+            </span>
+            <button onClick={() => { AudioFX.pop(); setPickGender(g => g === 'F' ? 'M' : 'F'); }}
+              className="paw-press no-tap-highlight text-[11px] text-ginger-600 underline">🎲 重新随机</button>
+          </div>
+          <div className="text-xl font-bold mt-2" style={{ color: pick.color }}>{pick.name}</div>
           <div className="text-xs text-stone-500 mt-1">{pick.temper.join(' · ')}</div>
+          {wild && (
+            <div className="mt-3 bg-amber-50 border border-amber-200 rounded-xl2 p-3 text-xs text-amber-800 leading-relaxed">
+              🌿 <b>野生猫科观察提醒</b>：野生大猫不是宠物。在这里我们只是"科学观察"，要按时投喂关心它，但它不能繁殖，需要的食物也比家猫多哦。
+            </div>
+          )}
 
           <div className="mt-6 text-left">
             <label className="text-sm font-semibold text-stone-700">给它起个名字吧</label>
@@ -1663,13 +1996,14 @@ function Shelter({ user, setUser, go }) {
             <div>1. 去答题攒 <b className="text-ginger-600">小鱼干</b>（每答对一题 +2~3 🐟）</div>
             <div>2. 在猫舍里选一只喜欢的猫，给它起个名字</div>
             <div>3. 它就会出现在首页陪你啦！</div>
-            <div className="mt-1 text-[10px] text-stone-400">已收集品种 {uniqueOwned} / {DATA.breeds.length}</div>
+            <div className="mt-1 text-[10px] text-stone-400">家猫已收集 {uniqueOwned} / {totalDomestic}（野生猫科另算 🌿）</div>
           </Card>
 
           {[
-            ['common', '🥚 中华田园猫', '常见品种'],
-            ['rare',   '💎 短毛贵族',   '中级品种'],
-            ['epic',   '👑 长毛 & 特别', '稀有品种']
+            ['common', '🥚 中华田园猫', '常见品种 · 5 🐟'],
+            ['rare',   '💎 短毛贵族',   '中级品种 · 12 🐟'],
+            ['epic',   '👑 长毛 & 特别', '稀有品种 · 25-40 🐟'],
+            ['wild',   '🌿 野生猫科',   '只供观察 · 60-80 🐟']
           ].map(([key, title, sub]) => (
             <div key={key} className="mb-5">
               <div className="flex items-baseline gap-2 mb-2">
@@ -1683,6 +2017,9 @@ function Shelter({ user, setUser, go }) {
                   return (
                     <Card key={b.id} onClick={() => startAdopt(b)}
                       className="!p-0 text-center relative overflow-hidden">
+                      {b.wild && (
+                        <div className="absolute top-1.5 left-1.5 z-10 bg-amber-500 text-white text-[10px] rounded-full px-1.5 py-0.5 shadow-soft">🌿 野生</div>
+                      )}
                       {owned > 0 && (
                         <div className="absolute top-1.5 right-1.5 z-10 bg-mint-500 text-white text-[10px] rounded-full px-1.5 py-0.5 shadow-soft">已养 {owned}</div>
                       )}
@@ -1869,19 +2206,25 @@ function Stories({ user, setUser, go, routeParam }) {
 }
 
 // ============================================================
-// 📸 模块: 真实猫图鉴 - 15 个品种的高清照片库
+// 📸 模块: 真实猫图鉴 - 25 个品种的高清照片库
 // ============================================================
-function Gallery({ user, go, routeParam }) {
+function BreedGallery({ user, go, routeParam }) {
   const [openId, setOpenId] = useState(routeParam?.breedId || null);
 
   useEffect(() => {
     if (routeParam?.breedId) setOpenId(routeParam.breedId);
   }, [routeParam]);
 
+  const commonCount = DATA.breeds.filter(b => b.rarity === 'common' && !b.wild).length;
+  const rareCount   = DATA.breeds.filter(b => b.rarity === 'rare'   && !b.wild).length;
+  const epicCount   = DATA.breeds.filter(b => b.rarity === 'epic'   && !b.wild).length;
+  const wildCount   = DATA.breeds.filter(b => b.wild).length;
+
   const groups = [
-    { key: 'common', title: '🥚 中华田园猫', sub: '常见品种 · 5 种' },
-    { key: 'rare',   title: '💎 短毛贵族',   sub: '中级品种 · 6 种' },
-    { key: 'epic',   title: '👑 长毛 & 特别', sub: '稀有品种 · 4 种' }
+    { key: 'common', title: '🥚 中华田园猫', sub: `常见品种 · ${commonCount} 种` },
+    { key: 'rare',   title: '💎 短毛贵族',   sub: `中级品种 · ${rareCount} 种` },
+    { key: 'epic',   title: '👑 长毛 & 特别', sub: `稀有品种 · ${epicCount} 种` },
+    { key: 'wild',   title: '🌿 野生猫科',   sub: `观察对象 · ${wildCount} 种` }
   ];
 
   const opened = openId ? DATA.breeds.find(b => b.id === openId) : null;
@@ -1959,12 +2302,14 @@ function Gallery({ user, go, routeParam }) {
         right={<FishCoinBadge n={user.fishCoins} onClick={() => go('shelter')} />} />
       <div className="p-5 pb-32 max-w-md mx-auto">
         <Card className="!p-3 mb-4 bg-cream-100/60 text-xs text-stone-600">
-          <div className="font-semibold text-stone-700 mb-0.5">📸 15 个品种的真实照片</div>
+          <div className="font-semibold text-stone-700 mb-0.5">📸 {DATA.breeds.length} 个品种的真实照片</div>
           <div className="text-[11px] text-stone-500">点开任意一张看高清大图、品种介绍和家里养的同款猫～</div>
         </Card>
 
         {groups.map(g => {
-          const list = DATA.breeds.filter(b => b.rarity === g.key);
+          const list = g.key === 'wild'
+            ? DATA.breeds.filter(b => b.wild)
+            : DATA.breeds.filter(b => b.rarity === g.key && !b.wild);
           return (
             <div key={g.key} className="mb-5">
               <div className="flex items-baseline gap-2 mb-2">
@@ -2001,6 +2346,100 @@ function Gallery({ user, go, routeParam }) {
 }
 
 // ============================================================
+// 🍼 模块: 小猫宝宝起名（繁殖完成后）
+// ============================================================
+function KittenNaming({ user, setUser, go, kittenDraft, setKittenDraft }) {
+  const [name, setName] = useState('');
+  if (!kittenDraft) {
+    return (
+      <div className="min-h-full">
+        <Header title="小宝宝" onBack={() => go('home')} />
+        <div className="p-10 text-center text-stone-500">没有等领的小宝宝哦～</div>
+      </div>
+    );
+  }
+  const { breed, gender, parentIds, pairKey } = kittenDraft;
+  const f = user.myCats.find(c => c.id === parentIds[1]);
+  const m = user.myCats.find(c => c.id === parentIds[0]);
+
+  const finalize = () => {
+    const nm = name.trim() || DATA.nameIdeas[Math.floor(Math.random() * DATA.nameIdeas.length)];
+    const id = 'k' + Date.now();
+    const adoptedAt = Date.now();
+    setUser(u => {
+      const myCats = [...u.myCats, {
+        id,
+        breedId: breed.id,
+        name: nm,
+        adoptedAt,
+        intimacy: 70,
+        gender,
+        lastFedAt: adoptedAt,
+        dormant: false,
+        dormantSince: null,
+        generation: 2,
+        parentIds: [...parentIds]
+      }];
+      const totalKittens = (u.totalKittens || 0) + 1;
+      const pairBonds = { ...(u.pairBonds || {}) };
+      delete pairBonds[pairKey];
+      const badges = [...u.badges];
+      if (!badges.includes('bred_first')) badges.push('bred_first');
+      if (totalKittens >= 5 && !badges.includes('bred_5')) badges.push('bred_5');
+      if (myCats.length >= 5 && !badges.includes('cats_5')) badges.push('cats_5');
+      return { ...u, myCats, activeCatId: id, totalKittens, pairBonds, badges };
+    });
+    AudioFX.chime();
+    setKittenDraft(null);
+    setTimeout(() => alert(`🎉 ${nm} 出生啦！\n爸爸：${m?.name || '?'}  妈妈：${f?.name || '?'}\n回首页摸摸 TA 吧～`), 200);
+    go('home');
+  };
+
+  return (
+    <div className="min-h-full">
+      <Header title="🐣 小宝宝出生啦！" onBack={() => { setKittenDraft(null); go('home'); }} />
+      <div className="px-5 pt-4 pb-32 max-w-md mx-auto text-center">
+        <div className="bg-pink-50 rounded-xl3 p-5 shadow-soft">
+          <div className="text-xs text-pink-500 font-semibold mb-1">💕 一窝小猫诞生</div>
+          <div className="flex items-center justify-center gap-2 text-xs text-stone-600 mb-3">
+            <span>{f?.name || '妈妈'} ♀</span>
+            <span>×</span>
+            <span>{m?.name || '爸爸'} ♂</span>
+          </div>
+          <div className="floaty inline-block"><CatAvatar breed={breed} size="lg" /></div>
+          <div className="mt-3 text-xs text-stone-500">这只小宝宝是</div>
+          <div className="mt-1 inline-flex items-center gap-2">
+            <span className="text-base px-2 py-0.5 rounded-full text-white font-bold"
+              style={{ background: genderColor(gender) }}>{genderLabel(gender)}</span>
+            <span className="text-base font-bold" style={{ color: breed.color }}>{breed.name}</span>
+          </div>
+          <div className="text-[11px] text-stone-400 mt-1">{breed.temper.join(' · ')}</div>
+        </div>
+
+        <div className="mt-5 text-left">
+          <label className="text-sm font-semibold text-stone-700">给宝宝起个名字吧</label>
+          <div className="mt-2 flex gap-2">
+            <input value={name} onChange={e => setName(e.target.value)} maxLength={10}
+              placeholder="例：小布丁、奶豆、麻薯…"
+              className="flex-1 min-w-0 px-3 py-3 rounded-xl2 bg-cream-100 outline-none text-lg" />
+            <button onClick={() => { AudioFX.pop(); setName(DATA.nameIdeas[Math.floor(Math.random() * DATA.nameIdeas.length)]); }}
+              className="paw-press no-tap-highlight bg-white border border-cream-200 px-3 rounded-xl2 text-sm text-stone-600">
+              🎲 随机
+            </button>
+          </div>
+          <div className="text-[11px] text-stone-400 mt-2">名字最多 10 个字</div>
+        </div>
+
+        <div className="mt-5">
+          <BigButton onClick={finalize}>🍼 接小宝宝回家！</BigButton>
+          <div className="text-xs text-stone-400 mt-2">小宝宝是免费的，初始亲密度 70</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // 🚀 主 App
 // ============================================================
 function App() {
@@ -2011,11 +2450,14 @@ function App() {
     fishToday: 0,                 // 今天已得（每日上限）
     lastFishDate: '',             // 上次获得鱼干的日期 YYYY-MM-DD
     myCats: [                     // 已领养的猫（送一只橘猫"布丁"开场）
-      { id: 'c0', breedId: 'orange', name: '布丁', adoptedAt: Date.now(), intimacy: 60 }
+      { id: 'c0', breedId: 'orange', name: '布丁', adoptedAt: Date.now(), intimacy: 60,
+        gender: 'F', lastFedAt: Date.now(), dormant: false, dormantSince: null, generation: 1 }
     ],
     activeCatId: 'c0',            // 首页正在陪伴的猫
     totalCuddles: 0,              // 累计陪伴次数（徽章用）
     totalFeeds: 0,                // 累计喂猫次数（徽章用）
+    totalKittens: 0,              // 累计出生小猫数（徽章用）
+    pairBonds: {},                // { 'idA|idB': { startAt: ms } } - 配对中
     correctCount: 0,
     answered: {},
     unlocked: ['house_cat'],      // 猫科动物图鉴解锁
@@ -2026,7 +2468,54 @@ function App() {
   });
   const [route, setRoute] = useState('home');
   const [routeParam, setRouteParam] = useState(null);
+  const [kittenDraft, setKittenDraft] = useState(null);
+  const [returnedNotice, setReturnedNotice] = useState([]);
   const go = (r, param = null) => { setRoute(r); setRouteParam(param); };
+
+  // 一次性：迁移 + 休眠清理 + 配对状态同步（启动时跑一次）
+  const ranInitRef = useRef(false);
+  useEffect(() => {
+    if (ranInitRef.current) return;
+    ranInitRef.current = true;
+    setUser(u => {
+      let next = migrateUserToV011(u);
+      const cleaned = applyDormancyCleanup(next);
+      next = cleaned.user;
+      if (cleaned.returnedCats.length > 0) {
+        setReturnedNotice(cleaned.returnedCats.map(c => c.name));
+      }
+      // 配对状态：合格但没记录的 → 现在记录；不合格的 → 删除
+      const eligible = findEligiblePairs(next.myCats);
+      const eligibleKeys = new Set(eligible.map(p => p.key));
+      const nowMs = Date.now();
+      const pairBonds = { ...(next.pairBonds || {}) };
+      for (const p of eligible) {
+        if (!pairBonds[p.key]) pairBonds[p.key] = { startAt: nowMs };
+      }
+      for (const k of Object.keys(pairBonds)) {
+        if (!eligibleKeys.has(k)) delete pairBonds[k];
+      }
+      return { ...next, pairBonds };
+    });
+  }, []);
+
+  // 每次 myCats / 亲密度等变化时同步配对状态（不重置已开始的计时）
+  useEffect(() => {
+    setUser(u => {
+      const eligible = findEligiblePairs(u.myCats);
+      const eligibleKeys = new Set(eligible.map(p => p.key));
+      const pairBonds = { ...(u.pairBonds || {}) };
+      let changed = false;
+      const nowMs = Date.now();
+      for (const p of eligible) {
+        if (!pairBonds[p.key]) { pairBonds[p.key] = { startAt: nowMs }; changed = true; }
+      }
+      for (const k of Object.keys(pairBonds)) {
+        if (!eligibleKeys.has(k)) { delete pairBonds[k]; changed = true; }
+      }
+      return changed ? { ...u, pairBonds } : u;
+    });
+  }, [user.myCats]);
 
   const activeCat = user.myCats.find(c => c.id === user.activeCatId) || user.myCats[0];
 
@@ -2038,7 +2527,7 @@ function App() {
     }
   }, []);
 
-  const props = { user, setUser, go, activeCat, routeParam };
+  const props = { user, setUser, go, activeCat, routeParam, kittenDraft, setKittenDraft };
 
   return (
     <div className="min-h-full">
@@ -2051,8 +2540,29 @@ function App() {
       {route === 'mycats'       && <MyCats {...props} />}
       {route === 'about'        && <About {...props} />}
       {route === 'stories'      && <Stories {...props} />}
-      {route === 'gallery'      && <Gallery {...props} />}
+      {route === 'gallery'      && <BreedGallery {...props} />}
+      {route === 'kitten'       && <KittenNaming {...props} />}
+      {returnedNotice.length > 0 && (
+        <ReturnedToShelterModal names={returnedNotice} onClose={() => setReturnedNotice([])} />
+      )}
       <BottomNav route={route} go={go} />
+    </div>
+  );
+}
+
+function ReturnedToShelterModal({ names, onClose }) {
+  useEffect(() => { AudioFX.pop(); }, []);
+  return (
+    <div className="fixed inset-0 z-40 bg-black/40 grid place-items-center px-6" onClick={onClose}>
+      <div className="bg-white rounded-xl3 p-6 max-w-xs w-full text-center yq-modal-enter" onClick={e => e.stopPropagation()}>
+        <div className="text-5xl">😴</div>
+        <div className="text-lg font-bold text-stone-700 mt-2">小猫睡得太久回猫舍啦</div>
+        <div className="text-sm text-stone-500 mt-2 leading-relaxed">
+          {names.map(n => <span key={n} className="inline-block bg-cream-100 px-2 py-0.5 rounded-full mx-0.5 text-stone-700">{n}</span>)}
+          <br/>下次记得按时给小猫喂小鱼干哦 🐟
+        </div>
+        <BigButton className="mt-5" onClick={onClose}>我知道啦</BigButton>
+      </div>
     </div>
   );
 }
