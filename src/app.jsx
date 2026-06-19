@@ -942,6 +942,14 @@ function shuffleOptions(q) {
   return { ...q, opts, a: opts.indexOf(correct) };
 }
 
+const QUIZ_LEVELS = [
+  { emoji: '🐱', title: '家猫篇' },
+  { emoji: '🐯', title: '猫科篇' },
+  { emoji: '🌍', title: '动物百科' },
+  { emoji: '📸', title: '看图识猫' },
+  { emoji: '📚', title: '故事大挑战' }
+];
+
 function Quiz({ user, setUser, go }) {
   const [level, setLevel] = useState(null);
   const [idx, setIdx] = useState(0);
@@ -970,8 +978,7 @@ function Quiz({ user, setUser, go }) {
           {[1, 2, 3, 4, 5].map(L => {
             const all = DATA.quizzes.filter(q => q.level === L);
             const done = all.filter(q => user.answered[q.id]).length;
-            const emoji = ['🐱','🐯','🌍','📸','📚'][L-1];
-            const title = ['家猫篇','猫科篇','动物百科','看图识猫','故事大挑战'][L-1];
+            const { emoji, title } = QUIZ_LEVELS[L - 1];
             const subMap = {
               4: '先看模糊轮廓猜，挑战一眼识猫',
               5: '题目都来自"猫咪小故事"，读过更容易答对'
@@ -1072,7 +1079,7 @@ function Quiz({ user, setUser, go }) {
 
   return (
     <div className="min-h-full">
-      <Header title={`${['家猫篇','猫科篇','动物百科','看图识猫'][level-1]} · ${idx + 1}/${list.length}`} onBack={() => setLevel(null)}
+      <Header title={`${QUIZ_LEVELS[level - 1].title} · ${idx + 1}/${list.length}`} onBack={() => setLevel(null)}
         right={<FishCoinBadge n={user.fishCoins} onClick={() => go('shelter')} />} />
       <div className="p-5 pb-32 max-w-md mx-auto">
         <div className={`bg-white rounded-xl3 p-5 shadow-soft ${shake ? 'shake' : ''}`}>
@@ -1819,7 +1826,7 @@ function About({ user, setUser, go }) {
           <p className="text-sm text-stone-600 leading-relaxed">
             《喵喵小百科》给爱猫的小朋友：10 种猫科动物图鉴、45 道题（含 15 道看图识猫）、25 个品种可领养（含 5 只野生猫科观察对象）、🍱 喂养系统、💕 配对繁殖、"猫的一天"、画板与小诗。
           </p>
-          <p className="text-xs text-stone-400 mt-3">v0.11 · 数据保存在本地，可导出备份 · 每日 🐟 上限 20</p>
+          <p className="text-xs text-stone-400 mt-3">v0.11.1 · 数据保存在本地，可导出备份 · 每日 🐟 上限 20</p>
         </Card>
 
         <Card>
@@ -2240,7 +2247,8 @@ function BreedGallery({ user, go, routeParam }) {
           <div className="w-full rounded-xl3 overflow-hidden shadow-pop"
             style={{ aspectRatio: '1/1', background: opened.color + '22' }}>
             <img src={breedPhoto(opened.id)} alt={opened.name}
-              className="w-full h-full object-cover" />
+              className="w-full h-full object-cover"
+              onError={(e) => { e.target.style.display='none'; }} />
           </div>
 
           <div className="text-center mt-4">
